@@ -9,10 +9,17 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "5432:5432"
+      - "5435:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    restart: unless-stopped
+
+  adminer:
+    image: adminer
+    container_name: workout_partner_adminer
+    ports:
+      - "8082:8080"
     restart: unless-stopped
 
 volumes:
