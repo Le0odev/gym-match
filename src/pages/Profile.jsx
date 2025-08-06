@@ -1,4 +1,4 @@
-import React, { useState, useContext, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { AuthContext } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 import { CustomButton, LoadingOverlay } from '../components';
 import { colors } from '../styles/colors';
 import { userService } from '../services/userService';
@@ -22,7 +22,7 @@ const Profile = ({ navigation }) => {
   const [darkMode, setDarkMode] = useState(false);
   const [showOnline, setShowOnline] = useState(true);
   
-  const { user, logout } = useContext(AuthContext);
+  const { user, logout } = useAuth();
 
   useEffect(() => {
     loadUserProfile();

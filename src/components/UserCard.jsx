@@ -164,8 +164,8 @@ const UserCard = ({
     }
     // Default avatar based on gender
     return user.gender === 'female' 
-      ? require('../assets/images/default-female-avatar.png')
-      : require('../assets/images/default-male-avatar.png');
+      ? require('../../assets/images/default-female-avatar.png')
+      : require('../../assets/images/default-male-avatar.png');
   };
 
   return (

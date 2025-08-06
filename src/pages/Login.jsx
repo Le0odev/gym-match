@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { AuthContext } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/AuthContext'; // Alterado para importar useAuth
 import { CustomButton, CustomInput, LoadingOverlay } from '../components';
 import { colors } from '../styles/colors';
 import { validateEmail, validatePassword } from '../utils/validation';
@@ -23,7 +23,7 @@ const Login = ({ navigation }) => {
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   
-  const { login } = useContext(AuthContext);
+  const { login } = useAuth(); // Alterado para usar useAuth()
 
   const handleInputChange = (field, value) => {
     setFormData(prev => ({
@@ -67,7 +67,7 @@ const Login = ({ navigation }) => {
     setLoading(true);
     try {
       await login(formData.email, formData.password);
-      // Navigation will be handled by AuthContext
+      // A navegação será automática quando o estado do usuário mudar
     } catch (error) {
       Alert.alert(
         'Erro no Login',

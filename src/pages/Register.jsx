@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -10,10 +10,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { AuthContext } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 import { CustomButton, CustomInput, LoadingOverlay } from '../components';
 import { colors } from '../styles/colors';
 import { validateEmail, validatePassword, validateName } from '../utils/validation';
+import PropTypes from 'prop-types';
 
 const Register = ({ navigation }) => {
   const [formData, setFormData] = useState({
@@ -26,7 +27,7 @@ const Register = ({ navigation }) => {
   const [loading, setLoading] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   
-  const { register } = useContext(AuthContext);
+  const { register } = useAuth();
 
   const handleInputChange = (field, value) => {
     setFormData(prev => ({
@@ -93,7 +94,7 @@ const Register = ({ navigation }) => {
         email: formData.email,
         password: formData.password,
       });
-      // Navigation will be handled by AuthContext
+      // A navegação será automática quando o estado do usuário mudar
     } catch (error) {
       Alert.alert(
         'Erro no Cadastro',
@@ -408,6 +409,10 @@ const Register = ({ navigation }) => {
       <LoadingOverlay visible={loading} text="Criando conta..." />
     </SafeAreaView>
   );
+};
+
+Register.propTypes = {
+  navigation: PropTypes.object.isRequired,
 };
 
 export default Register;

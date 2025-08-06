@@ -1,14 +1,12 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from '../services/api';
-import { useNavigation } from '@react-navigation/native';
 
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const navigation = useNavigation();
 
   useEffect(() => {
     const loadUser = async () => {
@@ -34,8 +32,6 @@ export const AuthProvider = ({ children }) => {
       await AsyncStorage.setItem('refreshToken', refreshToken);
       await AsyncStorage.setItem('user', JSON.stringify(user));
       setUser(user);
-      // Navegar para o Dashboard após o login
-      navigation.navigate('Dashboard');
     } catch (error) {
       console.error('Login failed', error.response?.data || error.message);
       throw error;
@@ -50,8 +46,6 @@ export const AuthProvider = ({ children }) => {
       await AsyncStorage.setItem('refreshToken', refreshToken);
       await AsyncStorage.setItem('user', JSON.stringify(user));
       setUser(user);
-      // Navegar para o Dashboard após o registro
-      navigation.navigate('Dashboard');
     } catch (error) {
       console.error('Registration failed', error.response?.data || error.message);
       throw error;
@@ -66,8 +60,6 @@ export const AuthProvider = ({ children }) => {
       await AsyncStorage.removeItem('refreshToken');
       await AsyncStorage.removeItem('user');
       setUser(null);
-      // Navegar para a tela de Login após o logout
-      navigation.navigate('Login');
     } catch (error) {
       console.error('Logout failed', error.response?.data || error.message);
     }

@@ -1,4 +1,4 @@
-import React, { useState, useContext, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { AuthContext } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 import { LoadingSpinner } from '../components';
 import { colors } from '../styles/colors';
 import { userService } from '../services/userService';
@@ -27,7 +27,7 @@ const Dashboard = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   
-  const { user, logout } = useContext(AuthContext);
+  const { user, logout } = useAuth();
 
   useEffect(() => {
     loadDashboardData();

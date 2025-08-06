@@ -1,7 +1,7 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_URL = 'http://localhost:3000/api'; // Altere para o IP do seu backend ou domínio
+const API_URL = 'http://192.168.1.9:3000/api'; // Para dispositivo físico
 
 const api = axios.create({
   baseURL: API_URL,
@@ -24,7 +24,7 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
-    if (error.response.status === 401 && !originalRequest._retry) {
+    if (error.response && error.response.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
       try {
         const refreshToken = await AsyncStorage.getItem('refreshToken');
