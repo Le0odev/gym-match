@@ -15,6 +15,18 @@ import { Gym } from './gym.entity';
 import { Match } from './match.entity';
 import { RefreshToken } from './refresh-token.entity';
 
+export enum ExperienceLevel {
+  BEGINNER = 'Iniciante',
+  INTERMEDIATE = 'Intermediário',
+  ADVANCED = 'Avançado',
+}
+
+export enum Gender {
+  MALE = 'male',
+  FEMALE = 'female',
+  OTHER = 'other',
+}
+
 @Entity('users')
 export class User {
   @PrimaryGeneratedColumn('uuid')
@@ -52,6 +64,57 @@ export class User {
 
   @Column({ name: 'gym_id', nullable: true })
   gymId: string;
+
+  // Novos campos para o app mobile
+  @Column({ name: 'profile_picture', nullable: true })
+  profilePicture: string;
+
+  @Column({ type: 'text', nullable: true })
+  bio: string;
+
+  @Column({ name: 'birth_date', type: 'date', nullable: true })
+  birthDate: Date;
+
+  @Column({
+    type: 'enum',
+    enum: ExperienceLevel,
+    name: 'experience_level',
+    nullable: true,
+  })
+  experienceLevel: ExperienceLevel;
+
+  @Column({
+    type: 'enum',
+    enum: Gender,
+    nullable: true,
+  })
+  gender: Gender;
+
+  @Column({ nullable: true })
+  location: string;
+
+  // Configurações do perfil
+  @Column({ name: 'notifications_enabled', default: true })
+  notificationsEnabled: boolean;
+
+  @Column({ name: 'dark_mode', default: false })
+  darkMode: boolean;
+
+  @Column({ name: 'show_online', default: true })
+  showOnline: boolean;
+
+  @Column({ name: 'last_seen', type: 'timestamp', nullable: true })
+  lastSeen: Date;
+
+  // Estatísticas
+  @Column({ name: 'total_matches', default: 0 })
+  totalMatches: number;
+
+  @Column({ name: 'completed_workouts', default: 0 })
+  completedWorkouts: number;
+
+  @Column({ name: 'profile_views', default: 0 })
+  profileViews: number;
 
   @ManyToOne(() => Gym, { nullable: true })
   gym: Gym;

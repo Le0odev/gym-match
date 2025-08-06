@@ -2,7 +2,14 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User, WorkoutPreference } from '../entities';
-import { UpdateUserDto, UpdateLocationDto, AddWorkoutPreferencesDto } from '../dto/user.dto';
+import { 
+  UpdateUserDto, 
+  UpdateLocationDto, 
+  AddWorkoutPreferencesDto,
+  UpdateProfileSettingsDto 
+} from '../dto/user.dto';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Injectable()
 export class UsersService {
@@ -49,6 +56,9 @@ export class UsersService {
 
     await this.userRepository.update(userId, {
       currentLocation: point,
+      location: updateLocationDto.city && updateLocationDto.state 
+        ? `${updateLocationDto.city}, ${updateLocationDto.state}`
+        : user.location,
     });
 
     return this.findById(userId);
@@ -72,6 +82,87 @@ export class UsersService {
   async getWorkoutPreferences(userId: string): Promise<WorkoutPreference[]> {
     const user = await this.findById(userId);
     return user.workoutPreferences;
+  }
+
+  // Novas funcionalidades para o app mobile
+  async uploadProfilePhoto(userId: string, file: Express.Multer.File): Promise<User> {
+    const user = await this.findById(userId);
+
+    // Criar diretório de uploads se não existir
+    const uploadsDir = path.join(process.cwd(), 'uploads', 'profile-photos');
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+
+    // Gerar nome único para o arquivo
+    const fileExtension = path.extname(file.originalname);
+    const fileName = `${userId}-${Date.now()}${fileExtension}`;
+    const filePath = path.join(uploadsDir, fileName);
+
+    // Salvar arquivo
+    fs.writeFileSync(filePath, file.buffer);
+
+    // Atualizar URL da foto no banco
+    const photoUrl = `/uploads/profile-photos/${fileName}`;
+    user.profilePicture = photoUrl;
+
+    return this.userRepository.save(user);
+  }
+
+  async updateProfilePhotoUrl(userId: string, photoUrl: string): Promise<User> {
+    const user = await this.findById(userId);
+    user.profilePicture = photoUrl;
+    return this.userRepository.save(user);
+  }
+
+  async updateProfileSettings(userId: string, updateSettingsDto: UpdateProfileSettingsDto): Promise<User> {
+    const user = await this.findById(userId);
+
+    if (updateSettingsDto.notifications !== undefined) {
+      user.notificationsEnabled = updateSettingsDto.notifications;
+    }
+    if (updateSettingsDto.darkMode !== undefined) {
+      user.darkMode = updateSettingsDto.darkMode;
+    }
+    if (updateSettingsDto.showOnline !== undefined) {
+      user.showOnline = updateSettingsDto.showOnline;
+    }
+
+    return this.userRepository.save(user);
+  }
+
+  async getUserStats(userId: string): Promise<{
+    totalMatches: number;
+    completedWorkouts: number;
+    profileViews: number;
+    joinedAt: Date;
+  }> {
+    const user = await this.findById(userId);
+    
+    return {
+      totalMatches: user.totalMatches,
+      completedWorkouts: user.completedWorkouts,
+      profileViews: user.profileViews,
+      joinedAt: user.createdAt,
+    };
+  }
+
+  async incrementProfileViews(userId: string): Promise<User> {
+    const user = await this.findById(userId);
+    user.profileViews += 1;
+    return this.userRepository.save(user);
+  }
+
+  async incrementCompletedWorkouts(userId: string): Promise<User> {
+    const user = await this.findById(userId);
+    user.completedWorkouts += 1;
+    return this.userRepository.save(user);
+  }
+
+  async updateLastSeen(userId: string): Promise<User> {
+    const user = await this.findById(userId);
+    user.lastSeen = new Date();
+    return this.userRepository.save(user);
   }
 
   private sanitizeUser(user: User) {

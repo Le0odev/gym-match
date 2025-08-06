@@ -1,7 +1,25 @@
-import { Controller, Get, Put, Post, Body, UseGuards, Request } from '@nestjs/common';
+import { 
+  Controller, 
+  Get, 
+  Put, 
+  Post, 
+  Body, 
+  UseGuards, 
+  Request, 
+  UseInterceptors, 
+  UploadedFile, 
+  BadRequestException 
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { UpdateUserDto, UpdateLocationDto, AddWorkoutPreferencesDto } from '../dto/user.dto';
+import { 
+  UpdateUserDto, 
+  UpdateLocationDto, 
+  AddWorkoutPreferencesDto, 
+  UploadPhotoDto,
+  UpdateProfileSettingsDto 
+} from '../dto/user.dto';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard)
@@ -34,6 +52,46 @@ export class UsersController {
   @Get('me/workout-preferences')
   async getWorkoutPreferences(@Request() req) {
     return this.usersService.getWorkoutPreferences(req.user.id);
+  }
+
+  // Novas funcionalidades para o app mobile
+  @Post('me/upload-photo')
+  @UseInterceptors(FileInterceptor('photo'))
+  async uploadPhoto(@Request() req, @UploadedFile() file: Express.Multer.File) {
+    if (!file) {
+      throw new BadRequestException('No file uploaded');
+    }
+    return this.usersService.uploadProfilePhoto(req.user.id, file);
+  }
+
+  @Put('me/photo')
+  async updatePhotoUrl(@Request() req, @Body() uploadPhotoDto: UploadPhotoDto) {
+    return this.usersService.updateProfilePhotoUrl(req.user.id, uploadPhotoDto.photoUrl);
+  }
+
+  @Put('me/settings')
+  async updateSettings(@Request() req, @Body() updateSettingsDto: UpdateProfileSettingsDto) {
+    return this.usersService.updateProfileSettings(req.user.id, updateSettingsDto);
+  }
+
+  @Get('me/stats')
+  async getStats(@Request() req) {
+    return this.usersService.getUserStats(req.user.id);
+  }
+
+  @Post('me/increment-views')
+  async incrementProfileViews(@Request() req) {
+    return this.usersService.incrementProfileViews(req.user.id);
+  }
+
+  @Post('me/increment-workouts')
+  async incrementCompletedWorkouts(@Request() req) {
+    return this.usersService.incrementCompletedWorkouts(req.user.id);
+  }
+
+  @Put('me/last-seen')
+  async updateLastSeen(@Request() req) {
+    return this.usersService.updateLastSeen(req.user.id);
   }
 }
 
