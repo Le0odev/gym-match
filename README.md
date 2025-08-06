@@ -1,254 +1,179 @@
-# WorkoutPartner - Sistema de Conexão de Parceiros de Treino
+# WorkoutPartner Mobile 📱
 
-## 📋 Descrição
+Aplicativo móvel React Native para conexão de parceiros de treino.
 
-WorkoutPartner é uma aplicação full-stack moderna para conectar pessoas que buscam parceiros de treino. O sistema utiliza um algoritmo inteligente de compatibilidade baseado em preferências de exercícios, características físicas e objetivos de fitness.
+## 🚀 Tecnologias
 
-## 🚀 Tecnologias Utilizadas
+- **React Native** com Expo
+- **React Navigation** para navegação
+- **NativeWind** para estilização
+- **Expo Vector Icons** para ícones
+- **React Native Gesture Handler** para gestos
+- **React Native Reanimated** para animações
 
-### Backend
-- **NestJS** (Desenvolvimento) - Framework Node.js moderno e escalável
-- **Flask** (Deploy) - Framework Python para produção
-- **PostgreSQL** - Banco de dados principal com suporte a geolocalização
-- **PostGIS** - Extensão para funcionalidades geoespaciais
-- **TypeORM** - ORM para TypeScript/JavaScript
-- **SQLAlchemy** - ORM para Python
-- **JWT** - Autenticação baseada em tokens
-- **bcrypt** - Hash seguro de senhas
+## 🎨 Design System
 
-### Frontend
-- **React** - Biblioteca para interfaces de usuário
-- **Vite** - Build tool moderna e rápida
-- **Tailwind CSS** - Framework CSS utilitário
-- **shadcn/ui** - Componentes de UI modernos
-- **React Hook Form** - Gerenciamento de formulários
-- **Zod** - Validação de esquemas
-- **Axios** - Cliente HTTP
+### Paleta de Cores
+- **Primária**: #3A86FF (Azul elétrico)
+- **Secundária**: #FF006E (Magenta vivo)
+- **Sucesso**: #06D6A0 (Verde limão)
+- **Fundo**: #F4F4F8 (Cinza claro)
+- **Texto**: #1E1E2F (Cinza escuro)
 
-## 🏗️ Arquitetura
+### Tipografia
+- **Títulos**: Poppins (Bold/SemiBold)
+- **Texto**: Inter (Regular/Medium)
 
-```
-workout-partner-app/
-├── backend/                 # Backend NestJS (desenvolvimento)
-│   ├── src/
-│   │   ├── entities/       # Modelos de dados TypeORM
-│   │   ├── auth/           # Módulo de autenticação
-│   │   ├── users/          # Módulo de usuários
-│   │   ├── matches/        # Módulo de matches
-│   │   └── workout-preferences/ # Módulo de preferências
-│   └── package.json
-├── backend-deploy/         # Backend Flask (produção)
-│   ├── src/
-│   │   ├── models/         # Modelos SQLAlchemy
-│   │   ├── routes/         # Rotas da API
-│   │   └── static/         # Frontend buildado
-│   └── requirements.txt
-├── frontend/               # Frontend React
-│   ├── src/
-│   │   ├── components/     # Componentes React
-│   │   ├── pages/          # Páginas da aplicação
-│   │   ├── contexts/       # Contextos React
-│   │   └── services/       # Serviços de API
-│   └── package.json
-└── README.md
-```
+## 📱 Funcionalidades
 
-## 🔧 Funcionalidades Implementadas
+### ✅ Implementadas
+- **Autenticação completa** (Login/Registro)
+- **Dashboard** com estatísticas e ações rápidas
+- **Descoberta de parceiros** estilo Tinder com swipe
+- **Sistema de matches** com lista de conexões
+- **Perfil do usuário** com configurações
+- **Navegação por tabs** intuitiva
+- **Design responsivo** e moderno
 
-### ✅ Autenticação e Autorização
-- Registro de usuários com validação completa
-- Login com JWT e refresh tokens
-- Proteção de rotas sensíveis
-- Middleware de autenticação
+### 🔄 Componentes Reutilizáveis
+- `CustomButton` - Botões com variantes
+- `CustomInput` - Campos de entrada com validação
+- `LoadingSpinner` - Indicadores de carregamento
+- `UserCard` - Cards de usuários para descoberta
 
-### ✅ Perfil de Usuário
-- Cadastro com informações físicas (altura, peso)
-- Definição de objetivos de treino
-- Seleção de preferências de exercícios
-- Atualização de localização
-
-### ✅ Sistema de Matching Inteligente
-- Algoritmo de compatibilidade baseado em:
-  - Preferências de treino comuns
-  - Compatibilidade física (altura/peso)
-  - Proximidade geográfica
-  - Objetivos similares
-- Score de compatibilidade (0-100%)
-- Sistema de "like" e "skip"
-- Detecção automática de matches mútuos
-
-### ✅ Interface de Usuário
-- Design responsivo e moderno
-- Experiência similar ao Tinder para descoberta
-- Navegação intuitiva
-- Feedback visual em tempo real
-- Formulários com validação
-
-### ✅ APIs RESTful
-- `/api/auth/register` - Registro de usuários
-- `/api/auth/login` - Login
-- `/api/auth/me` - Perfil do usuário atual
-- `/api/workout-preferences` - Listar preferências
-- `/api/matches/discover` - Descobrir usuários
-- `/api/matches/like/:id` - Curtir usuário
-- `/api/matches/skip/:id` - Pular usuário
-- `/api/matches` - Listar matches
-
-## 🚀 Como Executar
+## 🛠️ Instalação
 
 ### Pré-requisitos
-- Node.js 18+
-- Python 3.11+
-- PostgreSQL 14+
-- Git
+- Node.js (versão 16 ou superior)
+- npm ou yarn
+- Expo CLI
+- Expo Go app (para testar no dispositivo)
 
-### Backend NestJS (Desenvolvimento)
+### Passos
 
+1. **Clone o repositório**
+   ```bash
+   git clone https://github.com/Le0odev/gym-match.git
+   cd gym-match
+   git checkout react-native-frontend
+   cd workout-partner-mobile
+   ```
+
+2. **Instale as dependências**
+   ```bash
+   npm install
+   # ou
+   yarn install
+   ```
+
+3. **Inicie o servidor de desenvolvimento**
+   ```bash
+   npm start
+   # ou
+   yarn start
+   ```
+
+4. **Execute no dispositivo**
+   - Escaneie o QR code com o app Expo Go (Android)
+   - Ou use a câmera do iPhone (iOS)
+
+## 📱 Executando em Emuladores
+
+### Android
 ```bash
-# Instalar PostgreSQL e PostGIS
-sudo apt update
-sudo apt install postgresql postgresql-contrib postgis
-
-# Configurar banco de dados
-sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';"
-sudo -u postgres createdb workout_partner_db
-sudo -u postgres psql -d workout_partner_db -c "CREATE EXTENSION IF NOT EXISTS postgis;"
-
-# Instalar dependências
-cd backend
-npm install
-
-# Configurar variáveis de ambiente
-cp .env.example .env
-# Editar .env com suas configurações
-
-# Executar
-npm run start:dev
+npm run android
 ```
 
-### Frontend React
-
+### iOS
 ```bash
-# Instalar dependências
-cd frontend
-pnpm install
-
-# Executar em desenvolvimento
-pnpm run dev
-
-# Build para produção
-pnpm run build
+npm run ios
 ```
 
-### Backend Flask (Produção)
+## 🏗️ Estrutura do Projeto
 
-```bash
-# Ativar ambiente virtual
-cd backend-deploy
-source venv/bin/activate
-
-# Instalar dependências
-pip install -r requirements.txt
-
-# Executar
-python src/main.py
+```
+src/
+├── components/          # Componentes reutilizáveis
+│   ├── CustomButton.jsx
+│   ├── CustomInput.jsx
+│   ├── LoadingSpinner.jsx
+│   ├── UserCard.jsx
+│   └── index.js
+├── contexts/            # Contextos React
+│   └── AuthContext.jsx
+├── navigation/          # Configuração de navegação
+│   ├── AuthNavigator.jsx
+│   ├── MainNavigator.jsx
+│   ├── RootNavigator.jsx
+│   └── index.js
+├── pages/              # Telas do aplicativo
+│   ├── Login.jsx
+│   ├── Register.jsx
+│   ├── Dashboard.jsx
+│   ├── Discover.jsx
+│   ├── Matches.jsx
+│   ├── Profile.jsx
+│   └── index.js
+├── services/           # Serviços e APIs
+│   ├── api.js
+│   └── userService.js
+├── styles/             # Estilos e temas
+│   └── colors.js
+├── utils/              # Utilitários
+│   └── validation.js
+└── assets/             # Recursos estáticos
+    ├── fonts/
+    └── images/
 ```
 
-## 🧪 Testes Realizados
-
-### Testes Funcionais
-- ✅ Carregamento da página inicial
-- ✅ Sistema de autenticação (registro/login)
-- ✅ Proteção de rotas
-- ✅ Interface de descoberta
-- ✅ Sistema de matches
-- ✅ Responsividade
-
-### Testes de Integração
-- ✅ Comunicação frontend-backend
-- ✅ Persistência de dados
-- ✅ Autenticação JWT
-- ✅ APIs RESTful
-
-**Pontuação Geral: 90/100**
-
-## 📊 Algoritmo de Compatibilidade
-
-O sistema calcula a compatibilidade entre usuários baseado em:
-
-1. **Score Base**: 50 pontos
-2. **Compatibilidade de Altura**: até 10 pontos
-   - Diferença ≤ 10cm: +10 pontos
-   - Diferença ≤ 20cm: +5 pontos
-3. **Compatibilidade de Peso**: até 10 pontos
-   - Diferença ≤ 10kg: +10 pontos
-   - Diferença ≤ 20kg: +5 pontos
-4. **Objetivos Similares**: até 30 pontos
-   - Objetivos idênticos: +30 pontos
-   - Palavras-chave comuns: +15 pontos
-
-**Score Final**: Máximo de 100 pontos
-
-## 🔒 Segurança
-
-- Senhas hasheadas com bcrypt
-- Autenticação JWT com expiração
-- Validação de dados no frontend e backend
-- Proteção contra CORS
-- Sanitização de inputs
-
-## 🌐 Deploy
-
-### Opções de Deploy
-
-1. **Heroku** (Recomendado)
-2. **Vercel** (Frontend)
-3. **Railway**
-4. **DigitalOcean**
+## 🔧 Configuração
 
 ### Variáveis de Ambiente
+Crie um arquivo `.env` na raiz do projeto:
 
 ```env
-# Backend
-DATABASE_URL=postgresql://user:password@host:port/database
-JWT_SECRET=your-jwt-secret
-SECRET_KEY=your-flask-secret
-
-# Frontend
-VITE_API_URL=https://your-api-url.com
+API_BASE_URL=http://localhost:3000/api
 ```
 
-## 📈 Próximas Funcionalidades
+### Fontes Personalizadas
+As fontes Poppins e Inter são carregadas automaticamente pelo Expo.
 
-- [ ] Chat em tempo real com WebSocket
-- [ ] Sistema de avaliações e reviews
-- [ ] Integração com academias
-- [ ] Notificações push
-- [ ] Aplicativo mobile (React Native)
-- [ ] Sistema de agendamento de treinos
-- [ ] Integração com wearables
+## 🎯 Próximos Passos
+
+### 🚧 Funcionalidades Pendentes
+- [ ] Chat em tempo real entre matches
+- [ ] Sistema de notificações push
+- [ ] Integração com APIs de geolocalização
+- [ ] Upload de fotos do perfil
+- [ ] Filtros avançados de descoberta
+- [ ] Sistema de avaliações e feedback
+- [ ] Integração com redes sociais
+- [ ] Modo offline
+
+### 🔄 Melhorias Técnicas
+- [ ] Testes unitários e de integração
+- [ ] Otimização de performance
+- [ ] Implementação de cache
+- [ ] Tratamento de erros aprimorado
+- [ ] Acessibilidade (a11y)
 
 ## 🤝 Contribuição
 
-1. Fork o projeto
+1. Faça um fork do projeto
 2. Crie uma branch para sua feature (`git checkout -b feature/AmazingFeature`)
 3. Commit suas mudanças (`git commit -m 'Add some AmazingFeature'`)
 4. Push para a branch (`git push origin feature/AmazingFeature`)
 5. Abra um Pull Request
 
-## 📝 Licença
+## 📄 Licença
 
-Este projeto está sob a licença MIT. Veja o arquivo `LICENSE` para mais detalhes.
+Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
 
-## 👥 Equipe
+## 👨‍💻 Desenvolvedor
 
-- **Desenvolvedor Full-Stack**: Sistema completo desenvolvido seguindo as melhores práticas modernas
-
-## 📞 Suporte
-
-Para suporte, entre em contato através do email: suporte@workoutpartner.com
+Desenvolvido por [Le0odev](https://github.com/Le0odev)
 
 ---
 
-**WorkoutPartner** - Conectando pessoas através do fitness 💪
+**WorkoutPartner Mobile** - Conectando pessoas através do fitness! 💪
 
