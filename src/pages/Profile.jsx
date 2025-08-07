@@ -10,56 +10,60 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../contexts/AuthContext';
-import { CustomButton, LoadingOverlay } from '../components';
+import { CustomButton, LoadingSpinner } from '../components';
 import { colors } from '../styles/colors';
 import { userService } from '../services/userService';
+import { notificationService } from '../services/notificationService';
 
 const Profile = ({ navigation }) => {
   const [userProfile, setUserProfile] = useState(null);
+  const [userStats, setUserStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
   const [notifications, setNotifications] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
   const [showOnline, setShowOnline] = useState(true);
+  const [notificationSettings, setNotificationSettings] = useState({});
   
   const { user, logout } = useAuth();
 
   useEffect(() => {
     loadUserProfile();
+    loadUserStats();
+    loadNotificationSettings();
   }, []);
 
   const loadUserProfile = async () => {
     try {
       setLoading(true);
-      // TODO: Implement actual API call
-      // For now, using mock data
-      const mockProfile = {
-        id: user?.id || 1,
-        name: user?.name || 'Usuário',
-        email: user?.email || 'usuario@email.com',
-        profilePicture: null,
-        birthDate: '1995-03-15',
-        location: 'São Paulo, SP',
-        height: 175,
-        weight: 70,
-        experienceLevel: 'Intermediário',
-        workoutPreferences: [
-          { id: 1, name: 'Musculação' },
-          { id: 2, name: 'Cardio' },
-          { id: 3, name: 'Yoga' },
-        ],
-        bio: 'Apaixonado por fitness e sempre em busca de novos desafios! Vamos treinar juntos?',
-        joinedAt: '2024-01-15T10:00:00Z',
-        totalMatches: 12,
-        completedWorkouts: 45,
-      };
-      
-      setUserProfile(mockProfile);
+      const profile = await userService.getProfile();
+      setUserProfile(profile);
     } catch (error) {
       console.error('Error loading user profile:', error);
       Alert.alert('Erro', 'Não foi possível carregar o perfil');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadUserStats = async () => {
+    try {
+      const stats = await userService.getUserStats();
+      setUserStats(stats);
+    } catch (error) {
+      console.error('Error loading user stats:', error);
+    }
+  };
+
+  const loadNotificationSettings = async () => {
+    try {
+      const settings = await notificationService.getNotificationSettings();
+      setNotificationSettings(settings);
+      setNotifications(settings.matches || true);
+    } catch (error) {
+      console.error('Error loading notification settings:', error);
     }
   };
 
@@ -79,8 +83,7 @@ const Profile = ({ navigation }) => {
   };
 
   const handleEditProfile = () => {
-    // TODO: Navigate to edit profile screen
-    Alert.alert('Em breve', 'Edição de perfil em desenvolvimento');
+    navigation.navigate('EditProfile', { profile: userProfile });
   };
 
   const handleChangePhoto = () => {
@@ -89,10 +92,111 @@ const Profile = ({ navigation }) => {
       'Escolha uma opção:',
       [
         { text: 'Cancelar', style: 'cancel' },
-        { text: 'Câmera', onPress: () => console.log('Open camera') },
-        { text: 'Galeria', onPress: () => console.log('Open gallery') },
+        { text: 'Câmera', onPress: () => openImagePicker('camera') },
+        { text: 'Galeria', onPress: () => openImagePicker('gallery') },
       ]
     );
+  };
+
+  const openImagePicker = async (source) => {
+    try {
+      // Solicitar permissões
+      if (source === 'camera') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Erro', 'Permissão de câmera necessária');
+          return;
+        }
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Erro', 'Permissão de galeria necessária');
+          return;
+        }
+      }
+
+      const options = {
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      };
+
+      let result;
+      if (source === 'camera') {
+        result = await ImagePicker.launchCameraAsync(options);
+      } else {
+        result = await ImagePicker.launchImageLibraryAsync(options);
+      }
+
+      if (!result.canceled && result.assets[0]) {
+        await uploadPhoto(result.assets[0]);
+      }
+    } catch (error) {
+      console.error('Error opening image picker:', error);
+      Alert.alert('Erro', 'Não foi possível abrir a galeria/câmera');
+    }
+  };
+
+  const uploadPhoto = async (photo) => {
+    try {
+      setUploading(true);
+      
+      const photoFile = {
+        uri: photo.uri,
+        type: 'image/jpeg',
+        fileName: 'profile-photo.jpg',
+      };
+
+      const response = await userService.uploadPhoto(photoFile);
+      
+      // Atualizar o perfil local
+      setUserProfile(prev => ({
+        ...prev,
+        profilePicture: response.photoUrl,
+      }));
+
+      Alert.alert('Sucesso', 'Foto atualizada com sucesso!');
+    } catch (error) {
+      console.error('Error uploading photo:', error);
+      Alert.alert('Erro', 'Não foi possível fazer upload da foto');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleNotificationToggle = async (value) => {
+    try {
+      setNotifications(value);
+      const updatedSettings = {
+        ...notificationSettings,
+        matches: value,
+        messages: value,
+        likes: value,
+      };
+      
+      await notificationService.updateNotificationSettings(updatedSettings);
+      setNotificationSettings(updatedSettings);
+    } catch (error) {
+      console.error('Error updating notification settings:', error);
+      setNotifications(!value); // Reverter em caso de erro
+      Alert.alert('Erro', 'Não foi possível atualizar as configurações');
+    }
+  };
+
+  const handleSettingsUpdate = async (key, value) => {
+    try {
+      const settings = {};
+      settings[key] = value;
+      
+      await userService.updateSettings(settings);
+      
+      if (key === 'darkMode') setDarkMode(value);
+      if (key === 'showOnline') setShowOnline(value);
+    } catch (error) {
+      console.error('Error updating settings:', error);
+      Alert.alert('Erro', 'Não foi possível atualizar as configurações');
+    }
   };
 
   const calculateAge = (birthDate) => {
@@ -284,7 +388,7 @@ const Profile = ({ navigation }) => {
   if (loading) {
     return (
       <SafeAreaView style={getContainerStyle()}>
-        <LoadingOverlay visible={true} text="Carregando perfil..." />
+        <LoadingSpinner visible={true} text="Carregando perfil..." />
       </SafeAreaView>
     );
   }
@@ -335,12 +439,17 @@ const Profile = ({ navigation }) => {
                 style={getEditPhotoButtonStyle()}
                 onPress={handleChangePhoto}
                 activeOpacity={0.8}
+                disabled={uploading}
               >
-                <Ionicons
-                  name="camera"
-                  size={16}
-                  color={colors.white}
-                />
+                {uploading ? (
+                  <LoadingSpinner size="small" color={colors.white} />
+                ) : (
+                  <Ionicons
+                    name="camera"
+                    size={16}
+                    color={colors.white}
+                  />
+                )}
               </TouchableOpacity>
             </View>
             
@@ -353,7 +462,7 @@ const Profile = ({ navigation }) => {
             </Text>
             
             <Text style={getJoinDateStyle()}>
-              Membro desde {formatJoinDate(userProfile?.joinedAt)}
+              Membro desde {formatJoinDate(userProfile?.createdAt)}
             </Text>
           </View>
 
@@ -361,14 +470,14 @@ const Profile = ({ navigation }) => {
           <View style={getStatsContainerStyle()}>
             <View style={getStatItemStyle()}>
               <Text style={getStatValueStyle()}>
-                {userProfile?.totalMatches || 0}
+                {userStats?.totalMatches || 0}
               </Text>
               <Text style={getStatLabelStyle()}>Matches</Text>
             </View>
             
             <View style={getStatItemStyle()}>
               <Text style={getStatValueStyle()}>
-                {userProfile?.completedWorkouts || 0}
+                {userStats?.completedWorkouts || 0}
               </Text>
               <Text style={getStatLabelStyle()}>Treinos</Text>
             </View>
@@ -390,7 +499,7 @@ const Profile = ({ navigation }) => {
           
           <TouchableOpacity
             style={getMenuItemStyle()}
-            onPress={() => Alert.alert('Em breve', 'Editar informações pessoais em desenvolvimento')}
+            onPress={handleEditProfile}
             activeOpacity={0.7}
           >
             <View style={getMenuIconStyle()}>
@@ -404,7 +513,7 @@ const Profile = ({ navigation }) => {
           
           <TouchableOpacity
             style={getMenuItemStyle()}
-            onPress={() => Alert.alert('Em breve', 'Preferências de treino em desenvolvimento')}
+            onPress={() => navigation.navigate('WorkoutPreferences')}
             activeOpacity={0.7}
           >
             <View style={getMenuIconStyle()}>
@@ -444,7 +553,7 @@ const Profile = ({ navigation }) => {
             <Text style={getMenuTextStyle()}>Notificações</Text>
             <Switch
               value={notifications}
-              onValueChange={setNotifications}
+              onValueChange={handleNotificationToggle}
               trackColor={{ false: colors.gray[300], true: colors.primary + '40' }}
               thumbColor={notifications ? colors.primary : colors.gray[500]}
             />
@@ -457,7 +566,7 @@ const Profile = ({ navigation }) => {
             <Text style={getMenuTextStyle()}>Modo escuro</Text>
             <Switch
               value={darkMode}
-              onValueChange={setDarkMode}
+              onValueChange={(value) => handleSettingsUpdate('darkMode', value)}
               trackColor={{ false: colors.gray[300], true: colors.primary + '40' }}
               thumbColor={darkMode ? colors.primary : colors.gray[500]}
             />
@@ -470,7 +579,7 @@ const Profile = ({ navigation }) => {
             <Text style={getMenuTextStyle()}>Mostrar status online</Text>
             <Switch
               value={showOnline}
-              onValueChange={setShowOnline}
+              onValueChange={(value) => handleSettingsUpdate('showOnline', value)}
               trackColor={{ false: colors.gray[300], true: colors.primary + '40' }}
               thumbColor={showOnline ? colors.primary : colors.gray[500]}
             />

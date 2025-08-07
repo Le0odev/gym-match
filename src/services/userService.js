@@ -1,90 +1,301 @@
 import api from './api';
 
 export const userService = {
-  // Obter perfil do usuário
-  getProfile: async () => {
+  // Perfil do usuário
+  async getProfile() {
     try {
-      const response = await api.get('/users/profile');
+      const response = await api.get('/users/me');
       return response.data;
     } catch (error) {
-      console.error('Failed to get user profile', error.response?.data || error.message);
+      console.error('Error getting user profile:', error);
       throw error;
     }
   },
 
-  // Atualizar perfil do usuário
-  updateProfile: async (userData) => {
+  async updateProfile(profileData) {
     try {
-      const response = await api.put('/users/profile', userData);
+      const response = await api.put('/users/me', profileData);
       return response.data;
     } catch (error) {
-      console.error('Failed to update user profile', error.response?.data || error.message);
+      console.error('Error updating user profile:', error);
       throw error;
     }
   },
 
-  // Obter preferências de treino
-  getWorkoutPreferences: async () => {
+  async updatePhoto(photoUrl) {
+    try {
+      const response = await api.put('/users/me/photo', { photoUrl });
+      return response.data;
+    } catch (error) {
+      console.error('Error updating user photo:', error);
+      throw error;
+    }
+  },
+
+  async uploadPhoto(photoFile) {
+    try {
+      const formData = new FormData();
+      formData.append('photo', {
+        uri: photoFile.uri,
+        type: photoFile.type || 'image/jpeg',
+        name: photoFile.fileName || 'profile-photo.jpg',
+      });
+
+      const response = await api.post('/users/me/upload-photo', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error uploading photo:', error);
+      throw error;
+    }
+  },
+
+  async updateSettings(settings) {
+    try {
+      const response = await api.put('/users/me/settings', settings);
+      return response.data;
+    } catch (error) {
+      console.error('Error updating user settings:', error);
+      throw error;
+    }
+  },
+
+  async getUserStats() {
+    try {
+      const response = await api.get('/users/me/stats');
+      return response.data;
+    } catch (error) {
+      console.error('Error getting user stats:', error);
+      throw error;
+    }
+  },
+
+  async incrementViews() {
+    try {
+      const response = await api.post('/users/me/increment-views');
+      return response.data;
+    } catch (error) {
+      console.error('Error incrementing views:', error);
+      throw error;
+    }
+  },
+
+  async incrementWorkouts() {
+    try {
+      const response = await api.post('/users/me/increment-workouts');
+      return response.data;
+    } catch (error) {
+      console.error('Error incrementing workouts:', error);
+      throw error;
+    }
+  },
+
+  async updateLastSeen() {
+    try {
+      const response = await api.put('/users/me/last-seen');
+      return response.data;
+    } catch (error) {
+      console.error('Error updating last seen:', error);
+      throw error;
+    }
+  },
+
+  // Preferências de treino
+  async getWorkoutPreferences() {
     try {
       const response = await api.get('/workout-preferences');
       return response.data;
     } catch (error) {
-      console.error('Failed to get workout preferences', error.response?.data || error.message);
+      console.error('Error getting workout preferences:', error);
       throw error;
     }
   },
 
-  // Atualizar preferências de treino
-  updateWorkoutPreferences: async (preferences) => {
+  async getWorkoutPreferenceCategories() {
     try {
-      const response = await api.put('/workout-preferences', preferences);
+      const response = await api.get('/workout-preferences/categories');
       return response.data;
     } catch (error) {
-      console.error('Failed to update workout preferences', error.response?.data || error.message);
+      console.error('Error getting workout preference categories:', error);
       throw error;
     }
   },
 
-  // Obter usuários para descoberta
-  getDiscoverUsers: async (filters = {}) => {
+  async getPopularWorkoutPreferences(limit = 10) {
     try {
-      const response = await api.get('/matches/discover', { params: filters });
+      const response = await api.get(`/workout-preferences/popular?limit=${limit}`);
       return response.data;
     } catch (error) {
-      console.error('Failed to get discover users', error.response?.data || error.message);
+      console.error('Error getting popular workout preferences:', error);
       throw error;
     }
   },
 
-  // Dar like em um usuário
-  likeUser: async (userId) => {
+  async updateWorkoutPreferences(preferenceIds) {
     try {
-      const response = await api.post('/matches/like', { targetUserId: userId });
+      const response = await api.put('/users/me/workout-preferences', {
+        workoutPreferenceIds: preferenceIds,
+      });
       return response.data;
     } catch (error) {
-      console.error('Failed to like user', error.response?.data || error.message);
+      console.error('Error updating workout preferences:', error);
       throw error;
     }
   },
 
-  // Dar skip em um usuário
-  skipUser: async (userId) => {
+  // Descoberta e matching
+  async discoverUsers(filters = {}) {
     try {
-      const response = await api.post('/matches/skip', { targetUserId: userId });
+      const queryParams = new URLSearchParams();
+      
+      Object.keys(filters).forEach(key => {
+        if (filters[key] !== undefined && filters[key] !== null && filters[key] !== '') {
+          if (Array.isArray(filters[key])) {
+            filters[key].forEach(value => queryParams.append(key, value));
+          } else {
+            queryParams.append(key, filters[key]);
+          }
+        }
+      });
+
+      const response = await api.get(`/matches/discover?${queryParams.toString()}`);
       return response.data;
     } catch (error) {
-      console.error('Failed to skip user', error.response?.data || error.message);
+      console.error('Error discovering users:', error);
       throw error;
     }
   },
 
-  // Obter matches do usuário
-  getMatches: async () => {
+  async discoverUsersAdvanced(filters) {
     try {
-      const response = await api.get('/matches');
+      const response = await api.post('/matches/discover/advanced', filters);
       return response.data;
     } catch (error) {
-      console.error('Failed to get matches', error.response?.data || error.message);
+      console.error('Error discovering users (advanced):', error);
+      throw error;
+    }
+  },
+
+  async getNearbyUsers(distance = 5) {
+    try {
+      const response = await api.get(`/matches/nearby?distance=${distance}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error getting nearby users:', error);
+      throw error;
+    }
+  },
+
+  async getSuggestions(limit = 10) {
+    try {
+      const response = await api.get(`/matches/suggestions?limit=${limit}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error getting suggestions:', error);
+      throw error;
+    }
+  },
+
+  async likeUser(userId, message = null) {
+    try {
+      const body = message ? { message } : {};
+      const response = await api.post(`/matches/like/${userId}`, body);
+      return response.data;
+    } catch (error) {
+      console.error('Error liking user:', error);
+      throw error;
+    }
+  },
+
+  async superLikeUser(userId, message = null) {
+    try {
+      const body = message ? { message } : {};
+      const response = await api.post(`/matches/super-like/${userId}`, body);
+      return response.data;
+    } catch (error) {
+      console.error('Error super liking user:', error);
+      throw error;
+    }
+  },
+
+  async skipUser(userId, reason = null) {
+    try {
+      const body = reason ? { reason } : {};
+      const response = await api.post(`/matches/skip/${userId}`, body);
+      return response.data;
+    } catch (error) {
+      console.error('Error skipping user:', error);
+      throw error;
+    }
+  },
+
+  async getMatches(filters = {}) {
+    try {
+      const queryParams = new URLSearchParams();
+      
+      Object.keys(filters).forEach(key => {
+        if (filters[key] !== undefined && filters[key] !== null && filters[key] !== '') {
+          queryParams.append(key, filters[key]);
+        }
+      });
+
+      const response = await api.get(`/matches?${queryParams.toString()}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error getting matches:', error);
+      throw error;
+    }
+  },
+
+  async getMatchStats() {
+    try {
+      const response = await api.get('/matches/stats');
+      return response.data;
+    } catch (error) {
+      console.error('Error getting match stats:', error);
+      throw error;
+    }
+  },
+
+  async getCompatibilityScore(userId) {
+    try {
+      const response = await api.get(`/matches/compatibility/${userId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error getting compatibility score:', error);
+      throw error;
+    }
+  },
+
+  async unmatch(matchId) {
+    try {
+      const response = await api.post(`/matches/unmatch/${matchId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error unmatching:', error);
+      throw error;
+    }
+  },
+
+  async getSavedFilters() {
+    try {
+      const response = await api.get('/matches/filters/saved');
+      return response.data;
+    } catch (error) {
+      console.error('Error getting saved filters:', error);
+      throw error;
+    }
+  },
+
+  async saveFilters(filters) {
+    try {
+      const response = await api.post('/matches/filters/save', filters);
+      return response.data;
+    } catch (error) {
+      console.error('Error saving filters:', error);
       throw error;
     }
   },
