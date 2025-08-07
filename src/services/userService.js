@@ -150,6 +150,17 @@ export const userService = {
     }
   },
 
+  // Estatísticas do usuário
+  async getUserStats() {
+    try {
+      const response = await api.get('/users/me/stats');
+      return response.data;
+    } catch (error) {
+      console.error('Error getting user stats:', error);
+      throw error;
+    }
+  },
+
   // Descoberta e matching
   async discoverUsers(filters = {}) {
     try {
@@ -189,6 +200,24 @@ export const userService = {
       return response.data;
     } catch (error) {
       console.error('Error getting nearby users:', error);
+      throw error;
+    }
+  },
+
+  async getMatches(params = {}) {
+    try {
+      const queryParams = new URLSearchParams();
+      
+      Object.keys(params).forEach(key => {
+        if (params[key] !== undefined && params[key] !== null) {
+          queryParams.append(key, params[key]);
+        }
+      });
+
+      const response = await api.get(`/matches?${queryParams.toString()}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error getting matches:', error);
       throw error;
     }
   },

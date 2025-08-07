@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,11 +7,14 @@ import {
   PanResponder,
   Animated,
   TouchableOpacity,
+  ScrollView,
+  Modal,
+  Slider,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
-import { UserCard, LoadingSpinner } from '../components';
+import { UserCard, LoadingSpinner, CustomButton } from '../components';
 import { colors } from '../styles/colors';
 import { userService } from '../services/userService';
 
@@ -22,6 +25,15 @@ const Discover = ({ navigation }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [noMoreUsers, setNoMoreUsers] = useState(false);
+  const [filters, setFilters] = useState({
+    distance: 25,
+    ageRange: [18, 50],
+    workoutPreferences: [],
+    experienceLevel: null,
+  });
+  const [showFilters, setShowFilters] = useState(false);
+  const [workoutPreferences, setWorkoutPreferences] = useState([]);
+  const [loadingPreferences, setLoadingPreferences] = useState(false);
   
   const { user } = useAuth();
   
@@ -54,75 +66,94 @@ const Discover = ({ navigation }) => {
 
   useEffect(() => {
     loadUsers();
+    loadWorkoutPreferences();
   }, []);
+
+  const loadWorkoutPreferences = async () => {
+    try {
+      setLoadingPreferences(true);
+      const preferences = await userService.getWorkoutPreferences();
+      setWorkoutPreferences(preferences || []);
+    } catch (error) {
+      console.error('Error loading workout preferences:', error);
+      setWorkoutPreferences([]);
+    } finally {
+      setLoadingPreferences(false);
+    }
+  };
 
   const loadUsers = async () => {
     try {
       setLoading(true);
-      // TODO: Implement actual API call
-      // For now, using mock data
-      const mockUsers = [
-        {
-          id: 1,
-          name: 'Maria Silva',
-          birthDate: '1995-03-15',
-          location: 'São Paulo, SP',
-          height: 165,
-          weight: 60,
-          experienceLevel: 'Intermediário',
-          workoutPreferences: [
-            { name: 'Musculação' },
-            { name: 'Cardio' },
-            { name: 'Yoga' },
-          ],
-          compatibilityScore: 85,
-          profilePicture: null,
-          gender: 'female',
-        },
-        {
-          id: 2,
-          name: 'João Santos',
-          birthDate: '1992-07-22',
-          location: 'Rio de Janeiro, RJ',
-          height: 180,
-          weight: 75,
-          experienceLevel: 'Avançado',
-          workoutPreferences: [
-            { name: 'Musculação' },
-            { name: 'CrossFit' },
-          ],
-          compatibilityScore: 92,
-          profilePicture: null,
-          gender: 'male',
-        },
-        {
-          id: 3,
-          name: 'Ana Costa',
-          birthDate: '1998-11-08',
-          location: 'Belo Horizonte, MG',
-          height: 170,
-          weight: 65,
-          experienceLevel: 'Iniciante',
-          workoutPreferences: [
-            { name: 'Pilates' },
-            { name: 'Caminhada' },
-            { name: 'Natação' },
-          ],
-          compatibilityScore: 78,
-          profilePicture: null,
-          gender: 'female',
-        },
-      ];
       
-      setUsers(mockUsers);
-      setCurrentIndex(0);
-      setNoMoreUsers(false);
+      // Usar filtros para descobrir usuários com API real
+      const discoveredUsers = await userService.discoverUsers({
+        distance: filters.distance,
+        minAge: filters.ageRange[0],
+        maxAge: filters.ageRange[1],
+        workoutPreferences: filters.workoutPreferences,
+        experienceLevel: filters.experienceLevel,
+        limit: 10,
+        offset: 0,
+      });
+      
+      if (discoveredUsers && discoveredUsers.length > 0) {
+        // Calcular compatibilidade para cada usuário
+        const usersWithCompatibility = await Promise.all(
+          discoveredUsers.map(async (discoveredUser) => {
+            try {
+              const compatibility = await userService.getCompatibilityScore(discoveredUser.id);
+              return {
+                ...discoveredUser,
+                compatibilityScore: compatibility.score || 0,
+              };
+            } catch (error) {
+              console.error('Error getting compatibility:', error);
+              return {
+                ...discoveredUser,
+                compatibilityScore: Math.floor(Math.random() * 40) + 60, // Fallback 60-100%
+              };
+            }
+          })
+        );
+        
+        setUsers(usersWithCompatibility);
+        setCurrentIndex(0);
+        setNoMoreUsers(false);
+      } else {
+        setNoMoreUsers(true);
+        setUsers([]);
+      }
     } catch (error) {
       console.error('Error loading users:', error);
-      Alert.alert('Erro', 'Não foi possível carregar os usuários');
+      
+      // Em caso de erro, tentar carregar sugestões
+      try {
+        const suggestions = await userService.getSuggestions(10);
+        if (suggestions && suggestions.length > 0) {
+          setUsers(suggestions.map(user => ({
+            ...user,
+            compatibilityScore: Math.floor(Math.random() * 40) + 60,
+          })));
+          setCurrentIndex(0);
+          setNoMoreUsers(false);
+        } else {
+          setNoMoreUsers(true);
+          setUsers([]);
+        }
+      } catch (suggestionError) {
+        console.error('Error loading suggestions:', suggestionError);
+        setNoMoreUsers(true);
+        setUsers([]);
+      }
     } finally {
       setLoading(false);
     }
+  };
+
+  const applyFilters = async () => {
+    setShowFilters(false);
+    await loadUsers();
   };
 
   const panResponder = PanResponder.create({
@@ -180,17 +211,20 @@ const Discover = ({ navigation }) => {
 
   const handleLike = async (targetUser) => {
     try {
-      // TODO: Implement actual API call
-      console.log('Liked user:', targetUser.name);
+      const result = await userService.likeUser(targetUser.id);
       
-      // Simulate match detection
-      const isMatch = Math.random() > 0.7; // 30% chance of match
-      
-      if (isMatch) {
+      if (result.isMatch) {
         Alert.alert(
           '🎉 É um Match!',
           `Você e ${targetUser.name} se curtiram mutuamente!`,
           [
+            {
+              text: 'Enviar Mensagem',
+              onPress: () => navigation.navigate('Chat', { 
+                matchId: result.matchId,
+                user: targetUser 
+              }),
+            },
             {
               text: 'Ver Matches',
               onPress: () => navigation.navigate('Matches'),
@@ -204,15 +238,65 @@ const Discover = ({ navigation }) => {
       }
     } catch (error) {
       console.error('Error liking user:', error);
+      Alert.alert(
+        'Erro',
+        'Não foi possível curtir este usuário. Tente novamente.',
+        [{ text: 'OK' }]
+      );
     }
   };
 
   const handleSkip = async (targetUser) => {
     try {
-      // TODO: Implement actual API call
-      console.log('Skipped user:', targetUser.name);
+      await userService.skipUser(targetUser.id);
     } catch (error) {
       console.error('Error skipping user:', error);
+      // Não mostrar erro para skip, pois é uma ação silenciosa
+    }
+  };
+
+  const handleSuperLike = async (targetUser) => {
+    try {
+      const result = await userService.superLikeUser(targetUser.id);
+      
+      Alert.alert(
+        '⭐ Super Like Enviado!',
+        `Você deu um super like em ${targetUser.name}!`,
+        [{ text: 'OK' }]
+      );
+
+      if (result.isMatch) {
+        setTimeout(() => {
+          Alert.alert(
+            '🎉 É um Match!',
+            `Você e ${targetUser.name} se curtiram mutuamente!`,
+            [
+              {
+                text: 'Enviar Mensagem',
+                onPress: () => navigation.navigate('Chat', { 
+                  matchId: result.matchId,
+                  user: targetUser 
+                }),
+              },
+              {
+                text: 'Ver Matches',
+                onPress: () => navigation.navigate('Matches'),
+              },
+              {
+                text: 'Continuar',
+                style: 'cancel',
+              },
+            ]
+          );
+        }, 1000);
+      }
+    } catch (error) {
+      console.error('Error super liking user:', error);
+      Alert.alert(
+        'Erro',
+        'Não foi possível enviar o super like. Tente novamente.',
+        [{ text: 'OK' }]
+      );
     }
   };
 
@@ -390,23 +474,44 @@ const Discover = ({ navigation }) => {
     backgroundColor: colors.white,
   });
 
-  const getActionButtonStyle = (variant) => ({
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: variant === 'like' ? colors.success : colors.gray[100],
-    marginHorizontal: 20,
-    shadowColor: colors.black,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 4,
-  });
+  const getActionButtonStyle = (variant) => {
+    let backgroundColor;
+    let size = 56;
+    
+    switch (variant) {
+      case 'like':
+        backgroundColor = colors.success;
+        break;
+      case 'super':
+        backgroundColor = colors.white;
+        size = 48;
+        break;
+      case 'skip':
+      default:
+        backgroundColor = colors.gray[100];
+        break;
+    }
+    
+    return {
+      width: size,
+      height: size,
+      borderRadius: size / 2,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor,
+      marginHorizontal: variant === 'super' ? 10 : 20,
+      shadowColor: colors.black,
+      shadowOffset: {
+        width: 0,
+        height: 2,
+      },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 4,
+      borderWidth: variant === 'super' ? 2 : 0,
+      borderColor: variant === 'super' ? '#FFD700' : 'transparent',
+    };
+  };
 
   const getNoMoreUsersStyle = () => ({
     flex: 1,
@@ -465,10 +570,7 @@ const Discover = ({ navigation }) => {
         </Text>
         <TouchableOpacity
           style={getFilterButtonStyle()}
-          onPress={() => {
-            // TODO: Implement filters
-            Alert.alert('Em breve', 'Filtros em desenvolvimento');
-          }}
+          onPress={() => setShowFilters(true)}
           activeOpacity={0.7}
         >
           <Ionicons
@@ -500,6 +602,26 @@ const Discover = ({ navigation }) => {
           </TouchableOpacity>
           
           <TouchableOpacity
+            style={getActionButtonStyle('super')}
+            onPress={() => {
+              const currentUser = users[currentIndex];
+              handleSuperLike(currentUser);
+              position.setValue({ x: 0, y: 0 });
+              setCurrentIndex(currentIndex + 1);
+              if (currentIndex >= users.length - 1) {
+                setNoMoreUsers(true);
+              }
+            }}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name="star"
+              size={20}
+              color="#FFD700"
+            />
+          </TouchableOpacity>
+          
+          <TouchableOpacity
             style={getActionButtonStyle('like')}
             onPress={() => forceSwipe('right')}
             activeOpacity={0.8}
@@ -512,9 +634,288 @@ const Discover = ({ navigation }) => {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Filters Modal */}
+      <Modal
+        visible={showFilters}
+        animationType="slide"
+        presentationStyle="pageSheet"
+      >
+        <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+          <View style={getFilterModalHeaderStyle()}>
+            <TouchableOpacity
+              onPress={() => setShowFilters(false)}
+              style={getFilterModalCloseStyle()}
+            >
+              <Ionicons name="close" size={24} color={colors.gray[700]} />
+            </TouchableOpacity>
+            <Text style={getFilterModalTitleStyle()}>Filtros</Text>
+            <TouchableOpacity
+              onPress={applyFilters}
+              style={getFilterModalApplyStyle()}
+            >
+              <Text style={getFilterModalApplyTextStyle()}>Aplicar</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={getFilterModalContentStyle()}>
+            {/* Distance Filter */}
+            <View style={getFilterSectionStyle()}>
+              <Text style={getFilterSectionTitleStyle()}>
+                Distância: {filters.distance} km
+              </Text>
+              <Slider
+                style={getSliderStyle()}
+                minimumValue={1}
+                maximumValue={100}
+                value={filters.distance}
+                onValueChange={(value) => setFilters(prev => ({ ...prev, distance: Math.round(value) }))}
+                minimumTrackTintColor={colors.primary}
+                maximumTrackTintColor={colors.gray[300]}
+                thumbStyle={{ backgroundColor: colors.primary }}
+              />
+            </View>
+
+            {/* Age Range Filter */}
+            <View style={getFilterSectionStyle()}>
+              <Text style={getFilterSectionTitleStyle()}>
+                Idade: {filters.ageRange[0]} - {filters.ageRange[1]} anos
+              </Text>
+              <View style={getAgeRangeContainerStyle()}>
+                <View style={getAgeInputContainerStyle()}>
+                  <Text style={getAgeInputLabelStyle()}>Mín:</Text>
+                  <Slider
+                    style={getAgeSliderStyle()}
+                    minimumValue={18}
+                    maximumValue={65}
+                    value={filters.ageRange[0]}
+                    onValueChange={(value) => setFilters(prev => ({ 
+                      ...prev, 
+                      ageRange: [Math.round(value), prev.ageRange[1]] 
+                    }))}
+                    minimumTrackTintColor={colors.primary}
+                    maximumTrackTintColor={colors.gray[300]}
+                  />
+                </View>
+                <View style={getAgeInputContainerStyle()}>
+                  <Text style={getAgeInputLabelStyle()}>Máx:</Text>
+                  <Slider
+                    style={getAgeSliderStyle()}
+                    minimumValue={18}
+                    maximumValue={65}
+                    value={filters.ageRange[1]}
+                    onValueChange={(value) => setFilters(prev => ({ 
+                      ...prev, 
+                      ageRange: [prev.ageRange[0], Math.round(value)] 
+                    }))}
+                    minimumTrackTintColor={colors.primary}
+                    maximumTrackTintColor={colors.gray[300]}
+                  />
+                </View>
+              </View>
+            </View>
+
+            {/* Experience Level Filter */}
+            <View style={getFilterSectionStyle()}>
+              <Text style={getFilterSectionTitleStyle()}>Nível de Experiência</Text>
+              <View style={getExperienceLevelContainerStyle()}>
+                {['Iniciante', 'Intermediário', 'Avançado'].map((level) => (
+                  <TouchableOpacity
+                    key={level}
+                    style={getExperienceLevelButtonStyle(filters.experienceLevel === level)}
+                    onPress={() => setFilters(prev => ({ 
+                      ...prev, 
+                      experienceLevel: prev.experienceLevel === level ? null : level 
+                    }))}
+                  >
+                    <Text style={getExperienceLevelTextStyle(filters.experienceLevel === level)}>
+                      {level}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Workout Preferences Filter */}
+            <View style={getFilterSectionStyle()}>
+              <Text style={getFilterSectionTitleStyle()}>Preferências de Treino</Text>
+              {loadingPreferences ? (
+                <Text style={getLoadingTextStyle()}>Carregando...</Text>
+              ) : (
+                <View style={getWorkoutPreferencesContainerStyle()}>
+                  {workoutPreferences.map((preference) => {
+                    const isSelected = filters.workoutPreferences.includes(preference.id);
+                    return (
+                      <TouchableOpacity
+                        key={preference.id}
+                        style={getWorkoutPreferenceButtonStyle(isSelected)}
+                        onPress={() => {
+                          setFilters(prev => ({
+                            ...prev,
+                            workoutPreferences: isSelected
+                              ? prev.workoutPreferences.filter(id => id !== preference.id)
+                              : [...prev.workoutPreferences, preference.id]
+                          }));
+                        }}
+                      >
+                        <Text style={getWorkoutPreferenceTextStyle(isSelected)}>
+                          {preference.name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
+
+            {/* Reset Filters */}
+            <View style={getFilterSectionStyle()}>
+              <CustomButton
+                title="Limpar Filtros"
+                variant="outline"
+                onPress={() => {
+                  setFilters({
+                    distance: 25,
+                    ageRange: [18, 50],
+                    workoutPreferences: [],
+                    experienceLevel: null,
+                  });
+                }}
+              />
+            </View>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 };
 
 export default Discover;
+
+
+
+  // Filter Modal Styles
+  const getFilterModalHeaderStyle = () => ({
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray[100],
+  });
+
+  const getFilterModalCloseStyle = () => ({
+    padding: 4,
+  });
+
+  const getFilterModalTitleStyle = () => ({
+    fontFamily: 'Poppins-Bold',
+    fontSize: 18,
+    color: colors.gray[900],
+  });
+
+  const getFilterModalApplyStyle = () => ({
+    padding: 4,
+  });
+
+  const getFilterModalApplyTextStyle = () => ({
+    fontFamily: 'Poppins-SemiBold',
+    fontSize: 16,
+    color: colors.primary,
+  });
+
+  const getFilterModalContentStyle = () => ({
+    flex: 1,
+    paddingHorizontal: 20,
+  });
+
+  const getFilterSectionStyle = () => ({
+    marginVertical: 20,
+  });
+
+  const getFilterSectionTitleStyle = () => ({
+    fontFamily: 'Poppins-SemiBold',
+    fontSize: 16,
+    color: colors.gray[900],
+    marginBottom: 12,
+  });
+
+  const getSliderStyle = () => ({
+    width: '100%',
+    height: 40,
+  });
+
+  const getAgeRangeContainerStyle = () => ({
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  });
+
+  const getAgeInputContainerStyle = () => ({
+    flex: 1,
+    marginHorizontal: 8,
+  });
+
+  const getAgeInputLabelStyle = () => ({
+    fontFamily: 'Inter-Medium',
+    fontSize: 14,
+    color: colors.gray[700],
+    marginBottom: 8,
+  });
+
+  const getAgeSliderStyle = () => ({
+    width: '100%',
+    height: 40,
+  });
+
+  const getExperienceLevelContainerStyle = () => ({
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  });
+
+  const getExperienceLevelButtonStyle = (isSelected) => ({
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: isSelected ? colors.primary : colors.gray[100],
+    borderWidth: 1,
+    borderColor: isSelected ? colors.primary : colors.gray[300],
+  });
+
+  const getExperienceLevelTextStyle = (isSelected) => ({
+    fontFamily: 'Inter-Medium',
+    fontSize: 14,
+    color: isSelected ? colors.white : colors.gray[700],
+  });
+
+  const getWorkoutPreferencesContainerStyle = () => ({
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  });
+
+  const getWorkoutPreferenceButtonStyle = (isSelected) => ({
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: isSelected ? colors.primary : colors.gray[100],
+    borderWidth: 1,
+    borderColor: isSelected ? colors.primary : colors.gray[300],
+  });
+
+  const getWorkoutPreferenceTextStyle = (isSelected) => ({
+    fontFamily: 'Inter-Medium',
+    fontSize: 12,
+    color: isSelected ? colors.white : colors.gray[700],
+  });
+
+  const getLoadingTextStyle = () => ({
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: colors.gray[500],
+    textAlign: 'center',
+    paddingVertical: 20,
+  });
 
