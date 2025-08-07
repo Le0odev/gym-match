@@ -63,10 +63,16 @@ export class ChatService {
     );
 
     // Retornar mensagem com relações
-    return this.messageRepository.findOne({
+    const messageWithRelations = await this.messageRepository.findOne({
       where: { id: savedMessage.id },
       relations: ['sender', 'recipient', 'replyTo'],
     });
+
+    if (!messageWithRelations) {
+      throw new NotFoundException('Message not found after creation');
+    }
+
+    return messageWithRelations;
   }
 
   async getMatchMessages(userId: string, matchId: string, filters: MessageFiltersDto = {}) {
@@ -138,7 +144,6 @@ export class ChatService {
       message.readAt = new Date();
       await this.messageRepository.save(message);
 
-      // Atualizar contador de não lidas no match
       await this.updateUnreadCount(message.matchId, userId);
     }
 

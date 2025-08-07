@@ -1,5 +1,6 @@
 import { IsString, IsOptional, IsEnum, IsBoolean, IsObject, IsNumber, Min, Max } from 'class-validator';
-import { NotificationType, DeviceType } from '../entities/notification.entity';
+import { NotificationType } from '../entities/notification.entity';
+import { DeviceType } from '../entities/push-token.entity';
 
 export class RegisterPushTokenDto {
   @IsString()

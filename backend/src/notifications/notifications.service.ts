@@ -39,8 +39,12 @@ export class NotificationsService {
       existingToken.isActive = true;
       existingToken.lastUsed = new Date();
       existingToken.deviceType = registerDto.deviceType;
-      existingToken.deviceId = registerDto.deviceId;
-      existingToken.appVersion = registerDto.appVersion;
+      if (registerDto.deviceId) {
+        existingToken.deviceId = registerDto.deviceId;
+      }
+      if (registerDto.appVersion) {
+        existingToken.appVersion = registerDto.appVersion;
+      }
       
       return this.pushTokenRepository.save(existingToken);
     }

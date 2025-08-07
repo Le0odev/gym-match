@@ -285,11 +285,12 @@ export class MatchesService {
       return { matchStatus: 'accepted', matchId: existingMatch.id, isNewMatch: true };
     } else {
       // Create new pending match
+      const compatibilityResult = await this.getCompatibilityScore(userAId, userBId);
       const newMatch = this.matchRepository.create({
         userAId,
         userBId,
         status: MatchStatus.PENDING,
-        compatibilityScore: await this.getCompatibilityScore(userAId, userBId),
+        compatibilityScore: compatibilityResult.score,
         initialMessage: message,
       });
 
@@ -364,7 +365,7 @@ export class MatchesService {
         initialMessage: match.initialMessage,
         createdAt: match.createdAt,
         lastMessageAt: match.lastMessageAt,
-        unreadCount: match.unreadCount,
+        unreadCount: match.userAId === userId ? match.unreadCountA : match.unreadCountB,
       })),
       total: matches.length,
       hasMore: matches.length === (filters.limit || 20),
@@ -499,7 +500,7 @@ export class MatchesService {
   }
 
   private getCompatibilityFactors(userA: User, userB: User): string[] {
-    const factors = [];
+    const factors: string[] = [];
 
     // Common workout preferences
     const commonWorkouts = userA.workoutPreferences?.filter(prefA =>
