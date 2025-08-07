@@ -7,10 +7,12 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import * as ImagePicker from 'expo-image-picker';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -33,12 +35,14 @@ const editProfileSchema = z.object({
 const EditProfile = ({ navigation, route }) => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [profilePhoto, setProfilePhoto] = useState(null);
   const [workoutPreferences, setWorkoutPreferences] = useState([]);
   const [selectedPreferences, setSelectedPreferences] = useState([]);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [birthDate, setBirthDate] = useState(null);
   const { profile, isFirstTime } = route.params || {};
-  const { completeProfile, updateUser } = useAuth();
+  const { completeProfile } = useAuth();
 
   const {
     control,
@@ -63,8 +67,111 @@ const EditProfile = ({ navigation, route }) => {
     if (profile?.birthDate) {
       setBirthDate(new Date(profile.birthDate));
     }
+    if (profile?.profilePicture) {
+      setProfilePhoto(profile.profilePicture);
+    }
     loadWorkoutPreferences();
   }, [profile]);
+
+  const handleSelectPhoto = async () => {
+    try {
+      // Solicitar permissão para acessar a galeria
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permissão necessária',
+          'Precisamos de permissão para acessar suas fotos.',
+          [
+            { text: 'Cancelar', style: 'cancel' },
+            { text: 'Configurações', onPress: () => ImagePicker.openAppSettingsAsync() }
+          ]
+        );
+        return;
+      }
+
+      // Mostrar opções de seleção
+      Alert.alert(
+        'Selecionar Foto',
+        'Escolha uma opção:',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Câmera', onPress: () => openCamera() },
+          { text: 'Galeria', onPress: () => openGallery() }
+        ]
+      );
+    } catch (error) {
+      console.error('Error requesting permission:', error);
+      Alert.alert('Erro', 'Não foi possível acessar as fotos.');
+    }
+  };
+
+  const openCamera = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      
+      if (status !== 'granted') {
+        Alert.alert('Permissão necessária', 'Precisamos de permissão para usar a câmera.');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        await uploadPhoto(result.assets[0]);
+      }
+    } catch (error) {
+      console.error('Error opening camera:', error);
+      Alert.alert('Erro', 'Não foi possível abrir a câmera.');
+    }
+  };
+
+  const openGallery = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        await uploadPhoto(result.assets[0]);
+      }
+    } catch (error) {
+      console.error('Error opening gallery:', error);
+      Alert.alert('Erro', 'Não foi possível abrir a galeria.');
+    }
+  };
+
+  const uploadPhoto = async (imageAsset) => {
+    try {
+      setUploadingPhoto(true);
+
+      const photoFile = {
+        uri: imageAsset.uri,
+        type: imageAsset.type || 'image/jpeg',
+        fileName: imageAsset.fileName || `profile-${Date.now()}.jpg`,
+      };
+
+      const response = await userService.uploadPhoto(photoFile);
+      
+      if (response.photoUrl) {
+        setProfilePhoto(response.photoUrl);
+        Alert.alert('Sucesso', 'Foto de perfil atualizada com sucesso!');
+      }
+    } catch (error) {
+      console.error('Error uploading photo:', error);
+      Alert.alert('Erro', error.message || 'Não foi possível fazer upload da foto.');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
 
   const handleDateChange = (event, selectedDate) => {
     setShowDatePicker(false);
@@ -320,6 +427,76 @@ const EditProfile = ({ navigation, route }) => {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 32 }}
         >
+          {/* Foto de Perfil */}
+          <View style={getSectionStyle()}>
+            <Text style={getSectionTitleStyle()}>
+              Foto de Perfil
+            </Text>
+            
+            <View style={{
+              alignItems: 'center',
+              marginBottom: 16,
+            }}>
+              <TouchableOpacity
+                style={{
+                  width: 120,
+                  height: 120,
+                  borderRadius: 60,
+                  backgroundColor: colors.gray[100],
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginBottom: 16,
+                  borderWidth: 2,
+                  borderColor: colors.gray[200],
+                  overflow: 'hidden',
+                }}
+                onPress={handleSelectPhoto}
+                activeOpacity={0.7}
+              >
+                {profilePhoto ? (
+                  <Image
+                    source={{ uri: profilePhoto }}
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      borderRadius: 60,
+                    }}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={{
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}>
+                    <Ionicons
+                      name="camera"
+                      size={32}
+                      color={colors.gray[400]}
+                    />
+                    <Text style={{
+                      fontFamily: 'Inter-Medium',
+                      fontSize: 12,
+                      color: colors.gray[500],
+                      marginTop: 8,
+                      textAlign: 'center',
+                    }}>
+                      Adicionar{'\n'}Foto
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+
+              <CustomButton
+                title={profilePhoto ? "Alterar Foto" : "Adicionar Foto"}
+                onPress={handleSelectPhoto}
+                variant="outline"
+                size="small"
+                loading={uploadingPhoto}
+                disabled={uploadingPhoto}
+              />
+            </View>
+          </View>
+
           {/* Informações Básicas */}
           <View style={getSectionStyle()}>
             <Text style={getSectionTitleStyle()}>

@@ -45,11 +45,15 @@ export const userService = {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
+        timeout: 30000, // 30 segundos para upload
       });
       return response.data;
     } catch (error) {
       console.error('Error uploading photo:', error);
-      throw error;
+      if (error.response?.data?.message) {
+        throw new Error(error.response.data.message);
+      }
+      throw new Error('Erro ao fazer upload da foto. Tente novamente.');
     }
   },
 

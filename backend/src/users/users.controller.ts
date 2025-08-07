@@ -13,6 +13,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { FileUploadService } from '../services/file-upload.service';
 import { 
   UpdateUserDto, 
   UpdateLocationDto, 
@@ -24,7 +25,10 @@ import {
 @Controller('users')
 @UseGuards(JwtAuthGuard)
 export class UsersController {
-  constructor(private usersService: UsersService) {}
+  constructor(
+    private usersService: UsersService,
+    private fileUploadService: FileUploadService,
+  ) {}
 
   @Get('me')
   async getProfile(@Request() req) {
@@ -47,6 +51,34 @@ export class UsersController {
     @Body() addWorkoutPreferencesDto: AddWorkoutPreferencesDto,
   ) {
     return this.usersService.addWorkoutPreferences(req.user.id, addWorkoutPreferencesDto);
+  }
+
+  @Post('me/upload-photo')
+  @UseInterceptors(FileInterceptor('photo'))
+  async uploadProfilePhoto(
+    @Request() req,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Nenhum arquivo foi enviado.');
+    }
+
+    // Validar arquivo
+    this.fileUploadService.validateImageFile(file);
+
+    // Fazer upload para MinIO
+    const uploadResult = await this.fileUploadService.uploadProfilePhoto(
+      file,
+      req.user.id,
+    );
+
+    // Atualizar URL da foto no perfil do usuário
+    await this.usersService.updateProfilePhoto(req.user.id, uploadResult.url);
+
+    return {
+      message: 'Foto de perfil atualizada com sucesso',
+      photoUrl: uploadResult.url,
+    };
   }
 
   @Put('me/workout-preferences')

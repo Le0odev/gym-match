@@ -180,6 +180,12 @@ export class UsersService {
     return this.userRepository.save(user);
   }
 
+  async updateProfilePhoto(userId: string, photoUrl: string): Promise<User> {
+    const user = await this.findById(userId);
+    user.profilePicture = photoUrl;
+    return this.userRepository.save(user);
+  }
+
   private sanitizeUser(user: User) {
     const { password, ...result } = user;
     return result;
