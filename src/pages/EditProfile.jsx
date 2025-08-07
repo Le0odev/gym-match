@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -25,6 +26,7 @@ const editProfileSchema = z.object({
   location: z.string().optional(),
   experienceLevel: z.string().optional(),
   gender: z.string().optional(),
+  birthDate: z.date().optional(),
 });
 
 const EditProfile = ({ navigation, route }) => {
@@ -32,6 +34,8 @@ const EditProfile = ({ navigation, route }) => {
   const [saving, setSaving] = useState(false);
   const [workoutPreferences, setWorkoutPreferences] = useState([]);
   const [selectedPreferences, setSelectedPreferences] = useState([]);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [birthDate, setBirthDate] = useState(null);
   const { profile } = route.params || {};
 
   const {
@@ -51,6 +55,41 @@ const EditProfile = ({ navigation, route }) => {
       experienceLevel: profile?.experienceLevel || '',
       gender: profile?.gender || '',
     },
+  });
+
+  useEffect(() => {
+    if (profile?.birthDate) {
+      setBirthDate(new Date(profile.birthDate));
+    }
+    loadWorkoutPreferences();
+  }, [profile]);
+
+  const handleDateChange = (event, selectedDate) => {
+    setShowDatePicker(false);
+    if (selectedDate) {
+      setBirthDate(selectedDate);
+      setValue('birthDate', selectedDate);
+    }
+  };
+
+  const calculateAge = (birthDate) => {
+    if (!birthDate) return 0;
+    const today = new Date();
+    const birth = new Date(birthDate);
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
+    return age;
+  };
+
+  const formatDate = (date) => {
+    if (!date) return '';
+    return date.toLocaleDateString('pt-BR');
+  };
+
+  const loadWorkoutPreferences = async () => {
   });
 
   useEffect(() => {
