@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from '../services/api';
 
@@ -7,6 +7,7 @@ const AuthContext = createContext();
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isFirstTimeUser, setIsFirstTimeUser] = useState(false);
 
   useEffect(() => {
     const loadUser = async () => {
@@ -32,6 +33,7 @@ export const AuthProvider = ({ children }) => {
       await AsyncStorage.setItem('refreshToken', refreshToken);
       await AsyncStorage.setItem('user', JSON.stringify(user));
       setUser(user);
+      setIsFirstTimeUser(false);
     } catch (error) {
       console.error('Login failed', error.response?.data || error.message);
       throw error;
@@ -46,6 +48,7 @@ export const AuthProvider = ({ children }) => {
       await AsyncStorage.setItem('refreshToken', refreshToken);
       await AsyncStorage.setItem('user', JSON.stringify(user));
       setUser(user);
+      setIsFirstTimeUser(true); // Marca como primeiro acesso
     } catch (error) {
       console.error('Registration failed', error.response?.data || error.message);
       throw error;
@@ -60,13 +63,26 @@ export const AuthProvider = ({ children }) => {
       await AsyncStorage.removeItem('refreshToken');
       await AsyncStorage.removeItem('user');
       setUser(null);
+      setIsFirstTimeUser(false);
     } catch (error) {
       console.error('Logout failed', error.response?.data || error.message);
     }
   };
 
+  const completeProfile = () => {
+    setIsFirstTimeUser(false);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      loading, 
+      isFirstTimeUser,
+      login, 
+      register, 
+      logout,
+      completeProfile
+    }}>
       {children}
     </AuthContext.Provider>
   );

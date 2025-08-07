@@ -10,11 +10,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useAuth } from '../contexts/AuthContext';
-import { CustomButton, CustomInput, LoadingOverlay } from '../components';
+import { CustomButton, CustomInput, LoadingSpinner } from '../components';
 import { colors } from '../styles/colors';
 import { validateEmail, validatePassword, validateName } from '../utils/validation';
-import PropTypes from 'prop-types';
 
 const Register = ({ navigation }) => {
   const [formData, setFormData] = useState({
@@ -22,10 +22,12 @@ const Register = ({ navigation }) => {
     email: '',
     password: '',
     confirmPassword: '',
+    birthDate: null,
   });
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   
   const { register } = useAuth();
 
@@ -42,6 +44,41 @@ const Register = ({ navigation }) => {
         [field]: null,
       }));
     }
+  };
+
+  const handleDateChange = (event, selectedDate) => {
+    setShowDatePicker(false);
+    if (selectedDate) {
+      setFormData(prev => ({
+        ...prev,
+        birthDate: selectedDate,
+      }));
+      
+      // Clear error when date is selected
+      if (errors.birthDate) {
+        setErrors(prev => ({
+          ...prev,
+          birthDate: null,
+        }));
+      }
+    }
+  };
+
+  const calculateAge = (birthDate) => {
+    if (!birthDate) return 0;
+    const today = new Date();
+    const birth = new Date(birthDate);
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
+    return age;
+  };
+
+  const formatDate = (date) => {
+    if (!date) return '';
+    return date.toLocaleDateString('pt-BR');
   };
 
   const validateForm = () => {
@@ -75,6 +112,18 @@ const Register = ({ navigation }) => {
       newErrors.confirmPassword = 'Senhas não coincidem';
     }
 
+    // Birth date validation
+    if (!formData.birthDate) {
+      newErrors.birthDate = 'Data de nascimento é obrigatória';
+    } else {
+      const age = calculateAge(formData.birthDate);
+      if (age < 13) {
+        newErrors.birthDate = 'Você deve ter pelo menos 13 anos';
+      } else if (age > 120) {
+        newErrors.birthDate = 'Data de nascimento inválida';
+      }
+    }
+
     // Terms validation
     if (!acceptedTerms) {
       newErrors.terms = 'Você deve aceitar os termos de uso';
@@ -93,6 +142,7 @@ const Register = ({ navigation }) => {
         name: formData.name,
         email: formData.email,
         password: formData.password,
+        birthDate: formData.birthDate.toISOString(),
       });
       // A navegação será automática quando o estado do usuário mudar
     } catch (error) {
@@ -307,6 +357,75 @@ const Register = ({ navigation }) => {
                 secureTextEntry={true}
                 leftIcon="lock-closed-outline"
               />
+
+              {/* Birth Date */}
+              <View style={{ marginBottom: 16 }}>
+                <Text style={{
+                  fontFamily: 'Inter-Medium',
+                  fontSize: 14,
+                  lineHeight: 20,
+                  color: colors.gray[700],
+                  marginBottom: 8,
+                }}>
+                  Data de nascimento
+                </Text>
+                <TouchableOpacity
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingHorizontal: 16,
+                    paddingVertical: 12,
+                    borderWidth: 1,
+                    borderColor: errors.birthDate ? colors.secondary : colors.gray[300],
+                    borderRadius: 12,
+                    backgroundColor: colors.white,
+                  }}
+                  onPress={() => setShowDatePicker(true)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons
+                    name="calendar-outline"
+                    size={20}
+                    color={colors.gray[500]}
+                    style={{ marginRight: 12 }}
+                  />
+                  <Text style={{
+                    flex: 1,
+                    fontFamily: 'Inter-Regular',
+                    fontSize: 16,
+                    lineHeight: 24,
+                    color: formData.birthDate ? colors.gray[900] : colors.gray[500],
+                  }}>
+                    {formData.birthDate ? formatDate(formData.birthDate) : 'Selecione sua data de nascimento'}
+                  </Text>
+                  {formData.birthDate && (
+                    <Text style={{
+                      fontFamily: 'Inter-Medium',
+                      fontSize: 14,
+                      lineHeight: 20,
+                      color: colors.primary,
+                    }}>
+                      {calculateAge(formData.birthDate)} anos
+                    </Text>
+                  )}
+                </TouchableOpacity>
+                {errors.birthDate && (
+                  <Text style={getErrorTextStyle()}>
+                    {errors.birthDate}
+                  </Text>
+                )}
+              </View>
+
+              {showDatePicker && (
+                <DateTimePicker
+                  value={formData.birthDate || new Date(2000, 0, 1)}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={handleDateChange}
+                  maximumDate={new Date()}
+                  minimumDate={new Date(1900, 0, 1)}
+                />
+              )}
 
               {/* Terms and Conditions */}
               <TouchableOpacity
