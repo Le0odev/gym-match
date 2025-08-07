@@ -79,6 +79,21 @@ export class UsersService {
     return this.userRepository.save(user);
   }
 
+  async updateWorkoutPreferences(
+    userId: string,
+    workoutPreferenceIds: number[],
+  ): Promise<User> {
+    const user = await this.findById(userId);
+
+    const workoutPreferences = await this.workoutPreferenceRepository.findByIds(
+      workoutPreferenceIds,
+    );
+
+    user.workoutPreferences = workoutPreferences;
+
+    return this.userRepository.save(user);
+  }
+
   async getWorkoutPreferences(userId: string): Promise<WorkoutPreference[]> {
     const user = await this.findById(userId);
     return user.workoutPreferences;

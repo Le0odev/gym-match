@@ -49,6 +49,14 @@ export class UsersController {
     return this.usersService.addWorkoutPreferences(req.user.id, addWorkoutPreferencesDto);
   }
 
+  @Put('me/workout-preferences')
+  async updateWorkoutPreferences(
+    @Request() req,
+    @Body() updateWorkoutPreferencesDto: { workoutPreferenceIds: number[] },
+  ) {
+    return this.usersService.updateWorkoutPreferences(req.user.id, updateWorkoutPreferencesDto.workoutPreferenceIds);
+  }
+
   @Get('me/workout-preferences')
   async getWorkoutPreferences(@Request() req) {
     return this.usersService.getWorkoutPreferences(req.user.id);

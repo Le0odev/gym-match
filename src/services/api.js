@@ -1,7 +1,7 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_URL = 'http://192.168.1.9:3000/api'; // Para dispositivo físico
+const API_URL = 'http://192.168.1.9:3000/api'; 
 
 const api = axios.create({
   baseURL: API_URL,
@@ -43,10 +43,8 @@ api.interceptors.response.use(
         originalRequest.headers.Authorization = `Bearer ${accessToken}`;
         return api(originalRequest);
       } catch (refreshError) {
-        // Logout user if refresh fails
         await AsyncStorage.removeItem('accessToken');
         await AsyncStorage.removeItem('refreshToken');
-        // Redirecionar para a tela de login (será tratado no AuthContext)
         return Promise.reject(refreshError);
       }
     }
