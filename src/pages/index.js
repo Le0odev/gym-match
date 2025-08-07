@@ -8,3 +8,7 @@ export { default as EditProfile } from './EditProfile';
 export { default as Chat } from './Chat';
 export { default as WorkoutPreferences } from './WorkoutPreferences';
 
+
+export { default as Welcome } from './Welcome';
+
+

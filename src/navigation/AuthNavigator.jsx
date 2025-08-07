@@ -1,12 +1,13 @@
 import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
-import { Login, Register } from '../pages';
+import { Login, Register, Welcome } from '../pages';
 
 const Stack = createStackNavigator();
 
 const AuthNavigator = () => {
   return (
     <Stack.Navigator
+      initialRouteName="Welcome"
       screenOptions={{
         headerShown: false,
         cardStyle: { backgroundColor: 'transparent' },
@@ -26,6 +27,13 @@ const AuthNavigator = () => {
         },
       }}
     >
+      <Stack.Screen 
+        name="Welcome" 
+        component={Welcome}
+        options={{
+          title: 'Bem-vindo',
+        }}
+      />
       <Stack.Screen 
         name="Login" 
         component={Login}
