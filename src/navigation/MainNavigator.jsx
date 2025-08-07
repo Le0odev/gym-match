@@ -1,10 +1,33 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createStackNavigator } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
-import { Dashboard, Discover, Matches, Profile } from '../pages';
+import { Dashboard, Discover, Matches, Profile, EditProfile, Chat, WorkoutPreferences } from '../pages';
 import { colors } from '../styles/colors';
 
 const Tab = createBottomTabNavigator();
+const Stack = createStackNavigator();
+
+// Stack Navigator para Profile (inclui EditProfile)
+const ProfileStack = () => {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="ProfileMain" component={Profile} />
+      <Stack.Screen name="EditProfile" component={EditProfile} />
+      <Stack.Screen name="WorkoutPreferences" component={WorkoutPreferences} />
+    </Stack.Navigator>
+  );
+};
+
+// Stack Navigator para Matches (inclui Chat)
+const MatchesStack = () => {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="MatchesMain" component={Matches} />
+      <Stack.Screen name="Chat" component={Chat} />
+    </Stack.Navigator>
+  );
+};
 
 const MainNavigator = () => {
   const getTabBarIcon = (routeName, focused, color, size) => {
@@ -74,7 +97,7 @@ const MainNavigator = () => {
       />
       <Tab.Screen
         name="Matches"
-        component={Matches}
+        component={MatchesStack}
         options={{
           title: 'Matches',
           tabBarBadge: undefined, // Can be used for new matches count
@@ -82,7 +105,7 @@ const MainNavigator = () => {
       />
       <Tab.Screen
         name="Profile"
-        component={Profile}
+        component={ProfileStack}
         options={{
           title: 'Perfil',
         }}
