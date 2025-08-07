@@ -78,11 +78,21 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
-    setUser(null);
-    setIsAuthenticated(false);
+  const logout = async () => {
+    try {
+      const refreshToken = localStorage.getItem('refreshToken');
+      if (refreshToken) {
+        // Invalidate refresh token on backend
+        await authAPI.logout({ refreshToken });
+      }
+    } catch (error) {
+      console.error('Logout request failed:', error);
+    } finally {
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      setUser(null);
+      setIsAuthenticated(false);
+    }
   };
 
   const updateUser = (userData) => {

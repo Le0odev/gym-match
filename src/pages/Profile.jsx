@@ -35,6 +35,16 @@ const Profile = ({ navigation }) => {
     loadNotificationSettings();
   }, []);
 
+  // Recarregar dados quando voltar da tela de edição
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      loadUserProfile();
+      loadUserStats();
+    });
+
+    return unsubscribe;
+  }, [navigation]);
+
   const loadUserProfile = async () => {
     try {
       setLoading(true);

@@ -10,6 +10,9 @@ const api = axios.create({
   },
 });
 
+// Control concurrent refresh requests
+let refreshPromise = null;
+
 // Request interceptor to add auth token
 api.interceptors.request.use(
   (config) => {
@@ -34,20 +37,40 @@ api.interceptors.response.use(
       originalRequest._retry = true;
 
       try {
-        const refreshToken = localStorage.getItem('refreshToken');
-        if (refreshToken) {
-          const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
-            refreshToken,
-          });
+        // If there's already a refresh in progress, wait for it
+        if (refreshPromise) {
+          await refreshPromise;
+          const newToken = localStorage.getItem('accessToken');
+          if (newToken) {
+            originalRequest.headers.Authorization = `Bearer ${newToken}`;
+            return api(originalRequest);
+          }
+        }
 
-          const { accessToken, refreshToken: newRefreshToken } = response.data;
-          localStorage.setItem('accessToken', accessToken);
-          localStorage.setItem('refreshToken', newRefreshToken);
+        // Start a new refresh process
+        refreshPromise = (async () => {
+          const refreshToken = localStorage.getItem('refreshToken');
+          if (refreshToken) {
+            const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
+              refreshToken,
+            });
 
-          originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+            const { accessToken, refreshToken: newRefreshToken } = response.data;
+            localStorage.setItem('accessToken', accessToken);
+            localStorage.setItem('refreshToken', newRefreshToken);
+          }
+        })();
+
+        await refreshPromise;
+        refreshPromise = null;
+
+        const newToken = localStorage.getItem('accessToken');
+        if (newToken) {
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
           return api(originalRequest);
         }
       } catch (refreshError) {
+        refreshPromise = null;
         // Refresh failed, redirect to login
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
@@ -65,6 +88,7 @@ export const authAPI = {
   register: (userData) => api.post('/auth/register', userData),
   login: (credentials) => api.post('/auth/login', credentials),
   refresh: (refreshToken) => api.post('/auth/refresh', { refreshToken }),
+  logout: (refreshToken) => api.post('/auth/logout', refreshToken),
 };
 
 // User API

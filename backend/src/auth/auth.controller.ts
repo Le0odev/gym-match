@@ -22,5 +22,17 @@ export class AuthController {
   async refresh(@Body() refreshTokenDto: RefreshTokenDto) {
     return this.authService.refreshTokens(refreshTokenDto.refreshToken);
   }
+
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  async logout(@Body() refreshTokenDto: RefreshTokenDto) {
+    return this.authService.logout(refreshTokenDto.refreshToken);
+  }
+
+  @Post('cleanup-tokens')
+  @HttpCode(HttpStatus.OK)
+  async cleanupTokens() {
+    return this.authService.cleanExpiredTokensPublic();
+  }
 }
 

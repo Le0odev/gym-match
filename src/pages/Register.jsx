@@ -11,8 +11,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import PropTypes from 'prop-types';
 import { useAuth } from '../contexts/AuthContext';
-import { CustomButton, CustomInput, LoadingSpinner } from '../components';
+import { CustomButton, CustomInput, LoadingOverlay } from '../components';
 import { colors } from '../styles/colors';
 import { validateEmail, validatePassword, validateName } from '../utils/validation';
 
@@ -508,22 +509,22 @@ const Register = ({ navigation }) => {
             />
           </View>
         </ScrollView>
-
-        {/* Footer */}
-        <View style={getFooterStyle()}>
-          <Text style={getFooterTextStyle()}>
-            Já tem uma conta?
-          </Text>
-          <TouchableOpacity
-            onPress={() => navigation.navigate('Login')}
-            activeOpacity={0.7}
-          >
-            <Text style={getFooterLinkStyle()}>
-              Entrar
-            </Text>
-          </TouchableOpacity>
-        </View>
       </KeyboardAvoidingView>
+
+      {/* Footer - Fora do KeyboardAvoidingView para não subir com o teclado */}
+      <View style={getFooterStyle()}>
+        <Text style={getFooterTextStyle()}>
+          Já tem uma conta?
+        </Text>
+        <TouchableOpacity
+          onPress={() => navigation.navigate('Login')}
+          activeOpacity={0.7}
+        >
+          <Text style={getFooterLinkStyle()}>
+            Entrar
+          </Text>
+        </TouchableOpacity>
+      </View>
 
       <LoadingOverlay visible={loading} text="Criando conta..." />
     </SafeAreaView>

@@ -10,6 +10,9 @@ const api = axios.create({
   },
 });
 
+// Control concurrent refresh requests
+let refreshPromise = null;
+
 api.interceptors.request.use(async (config) => {
   const token = await AsyncStorage.getItem('accessToken');
   if (token) {
@@ -27,22 +30,42 @@ api.interceptors.response.use(
     if (error.response && error.response.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
       try {
-        const refreshToken = await AsyncStorage.getItem('refreshToken');
-        if (!refreshToken) {
-          throw new Error('No refresh token available');
+        // If there's already a refresh in progress, wait for it
+        if (refreshPromise) {
+          await refreshPromise;
+          const newToken = await AsyncStorage.getItem('accessToken');
+          if (newToken) {
+            originalRequest.headers.Authorization = `Bearer ${newToken}`;
+            return api(originalRequest);
+          }
         }
 
-        const response = await axios.post(`${API_URL}/auth/refresh`, {
-          refreshToken,
-        });
+        // Start a new refresh process
+        refreshPromise = (async () => {
+          const refreshToken = await AsyncStorage.getItem('refreshToken');
+          if (!refreshToken) {
+            throw new Error('No refresh token available');
+          }
 
-        const { accessToken, refreshToken: newRefreshToken } = response.data;
-        await AsyncStorage.setItem('accessToken', accessToken);
-        await AsyncStorage.setItem('refreshToken', newRefreshToken);
+          const response = await axios.post(`${API_URL}/auth/refresh`, {
+            refreshToken,
+          });
 
-        originalRequest.headers.Authorization = `Bearer ${accessToken}`;
-        return api(originalRequest);
+          const { accessToken, refreshToken: newRefreshToken } = response.data;
+          await AsyncStorage.setItem('accessToken', accessToken);
+          await AsyncStorage.setItem('refreshToken', newRefreshToken);
+        })();
+
+        await refreshPromise;
+        refreshPromise = null;
+
+        const newToken = await AsyncStorage.getItem('accessToken');
+        if (newToken) {
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          return api(originalRequest);
+        }
       } catch (refreshError) {
+        refreshPromise = null;
         await AsyncStorage.removeItem('accessToken');
         await AsyncStorage.removeItem('refreshToken');
         return Promise.reject(refreshError);

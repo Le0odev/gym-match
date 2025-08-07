@@ -57,20 +57,41 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
-      // Opcional: invalidar o refresh token no backend
-      // await api.post('/auth/logout', { refreshToken: await AsyncStorage.getItem('refreshToken') });
+      const refreshToken = await AsyncStorage.getItem('refreshToken');
+      if (refreshToken) {
+        // Opcional: invalidar o refresh token no backend
+        await api.post('/auth/logout', { refreshToken });
+      }
+    } catch (error) {
+      console.error('Logout failed', error.response?.data || error.message);
+    } finally {
       await AsyncStorage.removeItem('accessToken');
       await AsyncStorage.removeItem('refreshToken');
       await AsyncStorage.removeItem('user');
       setUser(null);
       setIsFirstTimeUser(false);
-    } catch (error) {
-      console.error('Logout failed', error.response?.data || error.message);
     }
   };
 
   const completeProfile = () => {
     setIsFirstTimeUser(false);
+  };
+
+  const updateUser = async (updatedUserData) => {
+    try {
+      // Buscar dados atualizados do usuário
+      const response = await api.get('/users/me');
+      const updatedUser = response.data;
+      
+      // Atualizar no estado e no storage
+      await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
+      setUser(updatedUser);
+      
+      return updatedUser;
+    } catch (error) {
+      console.error('Failed to update user data', error);
+      throw error;
+    }
   };
 
   return (
@@ -81,7 +102,8 @@ export const AuthProvider = ({ children }) => {
       login, 
       register, 
       logout,
-      completeProfile
+      completeProfile,
+      updateUser
     }}>
       {children}
     </AuthContext.Provider>

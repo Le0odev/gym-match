@@ -17,6 +17,7 @@ import { z } from 'zod';
 import { CustomButton, CustomInput, LoadingSpinner } from '../components';
 import { colors } from '../styles/colors';
 import { userService } from '../services/userService';
+import { useAuth } from '../contexts/AuthContext';
 
 const editProfileSchema = z.object({
   name: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres'),
@@ -36,7 +37,8 @@ const EditProfile = ({ navigation, route }) => {
   const [selectedPreferences, setSelectedPreferences] = useState([]);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [birthDate, setBirthDate] = useState(null);
-  const { profile } = route.params || {};
+  const { profile, isFirstTime } = route.params || {};
+  const { completeProfile, updateUser } = useAuth();
 
   const {
     control,
@@ -89,9 +91,6 @@ const EditProfile = ({ navigation, route }) => {
     return date.toLocaleDateString('pt-BR');
   };
 
-  const loadWorkoutPreferences = async () => {
-  });
-
   useEffect(() => {
     loadWorkoutPreferences();
     if (profile?.workoutPreferences) {
@@ -131,9 +130,26 @@ const EditProfile = ({ navigation, route }) => {
         await userService.updateWorkoutPreferences(selectedPreferences);
       }
 
-      Alert.alert('Sucesso', 'Perfil atualizado com sucesso!', [
-        { text: 'OK', onPress: () => navigation.goBack() }
-      ]);
+      // Atualizar dados do usuário no contexto
+      await updateUser();
+
+      if (isFirstTime) {
+        // Para usuários de primeira vez, marcar como perfil completo e navegar para o dashboard
+        Alert.alert('Sucesso', 'Perfil criado com sucesso! Bem-vindo ao GymMatch!', [
+          { 
+            text: 'OK', 
+            onPress: () => {
+              // Marcar o perfil como completo
+              completeProfile();
+              // A navegação será automática quando o estado mudar
+            }
+          }
+        ]);
+      } else {
+        Alert.alert('Sucesso', 'Perfil atualizado com sucesso!', [
+          { text: 'OK', onPress: () => navigation.goBack() }
+        ]);
+      }
     } catch (error) {
       console.error('Error updating profile:', error);
       Alert.alert('Erro', 'Não foi possível atualizar o perfil');
@@ -278,19 +294,21 @@ const EditProfile = ({ navigation, route }) => {
     <SafeAreaView style={getContainerStyle()}>
       {/* Header */}
       <View style={getHeaderStyle()}>
-        <TouchableOpacity
-          style={getBackButtonStyle()}
-          onPress={() => navigation.goBack()}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name="arrow-back"
-            size={24}
-            color={colors.gray[700]}
-          />
-        </TouchableOpacity>
+        {!isFirstTime && (
+          <TouchableOpacity
+            style={getBackButtonStyle()}
+            onPress={() => navigation.goBack()}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name="arrow-back"
+              size={24}
+              color={colors.gray[700]}
+            />
+          </TouchableOpacity>
+        )}
         <Text style={getHeaderTitleStyle()}>
-          Editar Perfil
+          {isFirstTime ? 'Complete seu Perfil' : 'Editar Perfil'}
         </Text>
       </View>
 
