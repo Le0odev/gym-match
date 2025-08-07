@@ -42,7 +42,7 @@ const EditProfile = ({ navigation, route }) => {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [birthDate, setBirthDate] = useState(null);
   const { profile, isFirstTime } = route.params || {};
-  const { completeProfile } = useAuth();
+  const { completeProfile, updateUser } = useAuth();
 
   const {
     control,

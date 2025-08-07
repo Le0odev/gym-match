@@ -9,7 +9,7 @@ export class MinioConfig {
 
   constructor(private configService: ConfigService) {
     this.minioClient = new Minio.Client({
-      endPoint: this.configService.get('MINIO_ENDPOINT', 'localhost'),
+      endPoint: this.configService.get('MINIO_ENDPOINT', '192.168.1.9'),
       port: parseInt(this.configService.get('MINIO_PORT', '9000')),
       useSSL: this.configService.get('MINIO_USE_SSL', 'false') === 'true',
       accessKey: this.configService.get('MINIO_ACCESS_KEY', 'minioadmin'),
@@ -59,7 +59,7 @@ export class MinioConfig {
   }
 
   getPublicUrl(objectName: string): string {
-    const endpoint = this.configService.get('MINIO_ENDPOINT', 'localhost');
+    const endpoint = this.configService.get('MINIO_ENDPOINT', '192.168.1.9');
     const port = this.configService.get('MINIO_PORT', '9000');
     const useSSL = this.configService.get('MINIO_USE_SSL', 'false') === 'true';
     const protocol = useSSL ? 'https' : 'http';
