@@ -1,5 +1,6 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import io from 'socket.io-client';
 
 const API_URL = 'http://192.168.1.9:3000/api'; 
 
@@ -76,5 +77,18 @@ api.interceptors.response.use(
 );
 
 export default api;
+
+// Socket.IO client singleton
+let socketInstance = null;
+export const getSocket = async () => {
+  if (socketInstance && socketInstance.connected) return socketInstance;
+  const token = await AsyncStorage.getItem('accessToken');
+  socketInstance = io(API_URL.replace('/api', ''), {
+    path: '/socket-io',
+    transports: ['websocket'],
+    auth: token ? { token } : undefined,
+  });
+  return socketInstance;
+};
 
 

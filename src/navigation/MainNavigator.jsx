@@ -1,9 +1,14 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 import { Dashboard, Discover, Matches, Profile, EditProfile, Chat, WorkoutPreferences } from '../pages';
+import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import { colors } from '../styles/colors';
+import { notificationService } from '../services/notificationService';
+import { getSocket } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
+import { eventBus } from '../services/eventBus';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -30,6 +35,35 @@ const MatchesStack = () => {
 };
 
 const MainNavigator = () => {
+  const { user } = useAuth();
+  const [unread, setUnread] = useState(0);
+
+  // Polling leve + socket para atualizar badge
+  useEffect(() => {
+    let interval;
+    let cleanup;
+    const fetchUnread = async () => {
+      try {
+        const res = await notificationService.getUnreadCount();
+        setUnread(res.count || 0);
+      } catch {}
+    };
+    fetchUnread();
+    interval = setInterval(fetchUnread, 15000);
+    (async () => {
+      const socket = await getSocket();
+      if (user?.id) socket.emit('register', user.id);
+      const onNotify = () => fetchUnread();
+      socket.on('message:new', onNotify);
+      cleanup = () => socket.off('message:new', onNotify);
+    })();
+    const offBadgeClear = eventBus.on('badge:clear', () => setUnread(0));
+    return () => {
+      clearInterval(interval);
+      cleanup && cleanup();
+      offBadgeClear && offBadgeClear();
+    };
+  }, [user?.id]);
   const getTabBarIcon = (routeName, focused, color, size) => {
     let iconName;
 
@@ -55,8 +89,10 @@ const MainNavigator = () => {
 
   return (
     <Tab.Navigator
+      initialRouteName="Dashboard"
       screenOptions={({ route }) => ({
         headerShown: false,
+        tabBarHideOnKeyboard: true,
         tabBarIcon: ({ focused, color, size }) =>
           getTabBarIcon(route.name, focused, color, size),
         tabBarActiveTintColor: colors.primary,
@@ -67,7 +103,7 @@ const MainNavigator = () => {
           borderTopColor: colors.gray[100],
           paddingBottom: 8,
           paddingTop: 8,
-          height: 80,
+          height: 64,
         },
         tabBarLabelStyle: {
           fontFamily: 'Inter-Medium',
@@ -76,7 +112,7 @@ const MainNavigator = () => {
           marginTop: 4,
         },
         tabBarItemStyle: {
-          paddingVertical: 4,
+          paddingVertical: 2,
         },
       })}
     >
@@ -98,9 +134,40 @@ const MainNavigator = () => {
       <Tab.Screen
         name="Matches"
         component={MatchesStack}
-        options={{
-          title: 'Matches',
-          tabBarBadge: undefined, // Can be used for new matches count
+        options={({ route }) => {
+          const nestedRoute = getFocusedRouteNameFromRoute(route) ?? 'MatchesMain';
+          const hideTab = nestedRoute === 'Chat';
+          const isMatchesMain = nestedRoute === 'MatchesMain';
+          return {
+            title: 'Matches',
+            tabBarBadge: unread > 0 ? (unread > 99 ? '99+' : unread) : undefined,
+            // Esconde a tab bar quando estiver no Chat e melhora visual no Matches
+            tabBarStyle: hideTab
+              ? { display: 'none' }
+              : isMatchesMain
+              ? {
+                  backgroundColor: colors.white,
+                  borderTopWidth: 1,
+                  borderTopColor: colors.gray[200],
+                  height: 68,
+                  paddingTop: 6,
+                  paddingBottom: 10,
+                  shadowColor: '#000',
+                  shadowOpacity: 0.06,
+                  shadowRadius: 8,
+                  shadowOffset: { width: 0, height: -2 },
+                  elevation: 8,
+                }
+              : undefined,
+          };
+        }}
+        listeners={{
+          tabPress: async () => {
+            try {
+              await notificationService.markAllAsRead();
+              setUnread(0);
+            } catch {}
+          },
         }}
       />
       <Tab.Screen

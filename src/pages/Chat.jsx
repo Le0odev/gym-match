@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,12 +8,16 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image,
+  Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { CustomInput, LoadingSpinner } from '../components';
 import { colors } from '../styles/colors';
 import { chatService } from '../services/chatService';
+import { getSocket } from '../services/api';
+import { eventBus } from '../services/eventBus';
+import { notificationService } from '../services/notificationService';
 import { useAuth } from '../contexts/AuthContext';
 
 const Chat = ({ navigation, route }) => {
@@ -25,13 +29,72 @@ const Chat = ({ navigation, route }) => {
   const flatListRef = useRef(null);
   const { user } = useAuth();
   const { matchId, matchData } = route.params || {};
+  const didInitialScrollRef = useRef(false);
+  const isNearBottomRef = useRef(true);
+  const scrollScheduledRef = useRef(false);
+
+  // Normaliza o objeto de match para sempre ter `otherUser`
+  const normalizeMatch = (m) => {
+    if (!m) return m;
+    if (m.otherUser || !m.user) return m;
+    return { ...m, otherUser: m.user };
+  };
+
+  // Garante que a lista de mensagens não tenha duplicatas por id
+  const dedupeById = (arr) => {
+    const seen = new Set();
+    const out = [];
+    for (const msg of arr) {
+      const key = msg?.id ?? `${msg?.senderId}-${msg?.createdAt}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        out.push(msg);
+      }
+    }
+    return out;
+  };
+
+  // Scroll coalescido para o fim
+  const scheduleScrollToEnd = (animated = false, delayMs = 50) => {
+    if (scrollScheduledRef.current) return;
+    scrollScheduledRef.current = true;
+    setTimeout(() => {
+      scrollScheduledRef.current = false;
+      requestAnimationFrame(() => {
+        flatListRef.current?.scrollToEnd({ animated });
+      });
+    }, delayMs);
+  };
 
   useEffect(() => {
     if (matchData) {
-      setMatch(matchData);
+      setMatch(normalizeMatch(matchData));
     }
+    // Carrega mensagens imediatamente
     loadMessages();
-    markMessagesAsRead();
+    // E marca como lidas após um pequeno atraso para garantir entrega
+    const t = setTimeout(() => {
+      markMessagesAsRead();
+    }, 150);
+    // Socket listener para novas mensagens
+    let cleanup;
+    (async () => {
+      const socket = await getSocket();
+      // registra user na sala
+      if (user?.id) socket.emit('register', user.id);
+      const handler = (msg) => {
+        if (msg.matchId === matchId) {
+          setMessages((prev) => dedupeById([...prev, msg]));
+          // Ao receber, garantir visibilidade da última mensagem
+          scheduleScrollToEnd(true, 40);
+        }
+      };
+      socket.on('message:new', handler);
+      cleanup = () => {
+        socket.off('message:new', handler);
+      };
+    })();
+    return () => { clearTimeout(t); if (cleanup) cleanup(); };
   }, [matchId]);
 
   const loadMessages = async () => {
@@ -41,7 +104,12 @@ const Chat = ({ navigation, route }) => {
         limit: 50,
         offset: 0,
       });
-      setMessages(messagesData.reverse()); // Reverter para mostrar mais recentes no final
+      // chatService já normaliza para array cronológico (mais antigo -> mais novo)
+      // Garantir ordem: se vier invertido, detectamos por createdAt
+      const normalized = Array.isArray(messagesData) ? messagesData : [];
+      setMessages(dedupeById(normalized));
+      // Após carregar, rolar para o fim para exibir a última mensagem
+      scheduleScrollToEnd(false, 60);
     } catch (error) {
       console.error('Error loading messages:', error);
       Alert.alert('Erro', 'Não foi possível carregar as mensagens');
@@ -53,6 +121,13 @@ const Chat = ({ navigation, route }) => {
   const markMessagesAsRead = async () => {
     try {
       await chatService.markAllMessagesAsRead(matchId);
+      // Notificar outras telas para atualizar contadores
+      eventBus.emit('match:read', { matchId });
+      // Limpar badge global (notificações) assim que usuário visualizar chat
+      try {
+        await notificationService.markAllAsRead();
+      } catch {}
+      eventBus.emit('badge:clear');
     } catch (error) {
       console.error('Error marking messages as read:', error);
     }
@@ -62,28 +137,38 @@ const Chat = ({ navigation, route }) => {
     if (!newMessage.trim()) return;
 
     try {
-      setSending(true);
-      const messageData = {
+      // Otimista: adiciona imediatamente
+      const tempId = `temp-${Date.now()}`;
+      const optimisticMessage = {
+        id: tempId,
         matchId,
+        senderId: user?.id,
+        recipientId: null,
         content: newMessage.trim(),
-        type: 'TEXT',
+        type: 'text',
+        createdAt: new Date().toISOString(),
       };
-
-      const sentMessage = await chatService.sendMessage(messageData);
-      
-      // Adicionar mensagem à lista local
-      setMessages(prev => [...prev, sentMessage]);
+      setMessages(prev => dedupeById([...prev, optimisticMessage]));
       setNewMessage('');
-      
-      // Scroll para o final
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+      scheduleScrollToEnd(true, 30);
+
+      // Envia ao backend
+      const sentMessage = await chatService.sendMessage({
+        matchId,
+        content: optimisticMessage.content,
+        type: 'text',
+      });
+
+      // Reconciliar: substitui a otimista pela real
+      setMessages(prev => {
+        const withoutOptimistic = prev.filter(m => m.id !== tempId);
+        return dedupeById([...withoutOptimistic, sentMessage]);
+      });
     } catch (error) {
       console.error('Error sending message:', error);
       Alert.alert('Erro', 'Não foi possível enviar a mensagem');
     } finally {
-      setSending(false);
+      // não mostra spinner; fluxo contínuo
     }
   };
 
@@ -97,12 +182,16 @@ const Chat = ({ navigation, route }) => {
           text: 'Enviar Convite', 
           onPress: async () => {
             try {
+              const now = new Date();
+              const pad = (n) => String(n).padStart(2, '0');
               const inviteData = {
                 matchId,
+                workoutType: 'Treino livre',
+                date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
+                time: `${pad(now.getHours())}:${pad(now.getMinutes())}`,
                 message: 'Que tal treinarmos juntos?',
-                proposedDate: new Date().toISOString(),
               };
-              
+
               await chatService.sendWorkoutInvite(inviteData);
               Alert.alert('Sucesso', 'Convite enviado!');
               loadMessages(); // Recarregar mensagens
@@ -134,7 +223,7 @@ const Chat = ({ navigation, route }) => {
     }
   };
 
-  const renderMessage = ({ item }) => {
+  const renderMessage = useCallback(({ item }) => {
     const isMyMessage = item.senderId === user?.id;
     
     return (
@@ -174,7 +263,7 @@ const Chat = ({ navigation, route }) => {
         </View>
       </View>
     );
-  };
+  }, [user?.id]);
 
   const getContainerStyle = () => ({
     flex: 1,
@@ -404,18 +493,37 @@ const Chat = ({ navigation, route }) => {
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        keyboardVerticalOffset={0}
       >
         {/* Messages */}
         <View style={getMessagesContainerStyle()}>
           <FlatList
             ref={flatListRef}
             data={messages}
-            keyExtractor={(item) => item.id.toString()}
+            keyExtractor={(item, index) => String(item?.id ?? `${item?.senderId}-${item?.createdAt}-${index}`)}
             renderItem={renderMessage}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{ paddingVertical: 16 }}
-            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+            onContentSizeChange={() => {
+              // Se já rolou e o usuário não está perto do fim, não force scroll
+              if (!didInitialScrollRef.current || isNearBottomRef.current) {
+                scheduleScrollToEnd(false, 10);
+                didInitialScrollRef.current = true;
+              }
+            }}
+            onLayout={() => scheduleScrollToEnd(false, 10)}
+            onScroll={({ nativeEvent }) => {
+              const { contentOffset, contentSize, layoutMeasurement } = nativeEvent;
+              const paddingToBottom = 80;
+              isNearBottomRef.current =
+                contentOffset.y + layoutMeasurement.height >= contentSize.height - paddingToBottom;
+            }}
+            keyboardShouldPersistTaps="handled"
+            initialNumToRender={20}
+            windowSize={9}
+            maxToRenderPerBatch={20}
+            updateDelayBeforeBatching={50}
+            removeClippedSubviews
           />
         </View>
 
@@ -427,8 +535,11 @@ const Chat = ({ navigation, route }) => {
               value={newMessage}
               onChangeText={setNewMessage}
               multiline
+              numberOfLines={1}
               maxLength={500}
               style={{ marginBottom: 0 }}
+              inputStyle={{ minHeight: 40, maxHeight: 120 }}
+              inputContainerStyle={{ borderRadius: 18, paddingVertical: 4 }}
             />
           </View>
 
@@ -438,15 +549,11 @@ const Chat = ({ navigation, route }) => {
             disabled={!newMessage.trim() || sending}
             activeOpacity={0.8}
           >
-            {sending ? (
-              <LoadingSpinner size="small" color={colors.white} />
-            ) : (
-              <Ionicons
-                name="send"
-                size={20}
-                color={colors.white}
-              />
-            )}
+            <Ionicons
+              name="send"
+              size={20}
+              color={colors.white}
+            />
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>

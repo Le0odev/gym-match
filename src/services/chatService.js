@@ -23,7 +23,9 @@ export const chatService = {
       });
 
       const response = await api.get(`/chat/matches/${matchId}/messages?${queryParams.toString()}`);
-      return response.data;
+      // Backend retorna { messages, total, hasMore }
+      const data = response.data;
+      return Array.isArray(data) ? data : (data?.messages ?? []);
     } catch (error) {
       console.error('Error getting match messages:', error);
       throw error;
@@ -85,7 +87,9 @@ export const chatService = {
   async getMatchUnreadCount(matchId) {
     try {
       const response = await api.get(`/chat/matches/${matchId}/unread-count`);
-      return response.data;
+      // Aceita { count } ou { unreadCount }
+      const data = response.data || {};
+      return { unreadCount: data.unreadCount ?? data.count ?? 0 };
     } catch (error) {
       console.error('Error getting match unread count:', error);
       throw error;

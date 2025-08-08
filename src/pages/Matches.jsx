@@ -14,17 +14,67 @@ import { LoadingSpinner } from '../components';
 import { colors } from '../styles/colors';
 import { userService } from '../services/userService';
 import { chatService } from '../services/chatService';
+import { getSocket } from '../services/api';
+import { eventBus } from '../services/eventBus';
+import { useAuth } from '../contexts/AuthContext';
 
 const Matches = ({ navigation }) => {
   const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [unreadCounts, setUnreadCounts] = useState({});
+  const { user } = useAuth();
+
+  // Helpers para lidar com diferentes formatos de resposta do backend
+  const getMatchId = (item) => item?.id ?? item?.matchId ?? null;
+  const getOtherUser = (item) => item?.otherUser ?? item?.user ?? null;
+  const getUnreadCountFor = (item) => {
+    const id = getMatchId(item);
+    return item?.unreadCount ?? (id != null ? unreadCounts[id] ?? 0 : 0);
+  };
 
   useEffect(() => {
     loadMatches();
     loadUnreadCounts();
   }, []);
+
+  // Realtime: quando chegar mensagem nova, atualizar contador e preview
+  useEffect(() => {
+    let cleanup;
+    (async () => {
+      const socket = await getSocket();
+      if (user?.id) socket.emit('register', user.id);
+      const onNewMessage = (msg) => {
+        // Incrementa somente se a mensagem for destinada ao usuário logado
+        if (!msg || msg.recipientId !== user?.id) return;
+        const matchId = msg.matchId;
+        if (!matchId) return;
+        setUnreadCounts((prev) => ({ ...prev, [matchId]: (prev[matchId] ?? 0) + 1 }));
+        setMatches((prev) => prev.map((m) => {
+          const mid = getMatchId(m);
+          if (mid === matchId) {
+            return {
+              ...m,
+              unreadCount: (m.unreadCount ?? 0) + 1,
+              lastMessage: { ...(m.lastMessage || {}), content: msg.content, createdAt: msg.createdAt },
+              lastMessageAt: msg.createdAt ?? m.lastMessageAt,
+            };
+          }
+          return m;
+        }));
+      };
+      socket.on('message:new', onNewMessage);
+      const offRead = eventBus.on('match:read', ({ matchId }) => {
+        setUnreadCounts(prev => ({ ...prev, [matchId]: 0 }));
+        setMatches(prev => prev.map(m => {
+          const mid = getMatchId(m);
+          return mid === matchId ? { ...m, unreadCount: 0 } : m;
+        }));
+      });
+      cleanup = () => socket.off('message:new', onNewMessage);
+    })();
+    return () => { cleanup && cleanup(); };
+  }, [user?.id]);
 
   const loadMatches = async () => {
     try {
@@ -44,13 +94,25 @@ const Matches = ({ navigation }) => {
 
   const loadUnreadCounts = async () => {
     try {
-      const counts = {};
+      // Se o backend já retornar unreadCount, popular o mapa local primeiro
+      const initialCounts = {};
+      for (const m of matches) {
+        const id = getMatchId(m);
+        if (id != null && typeof m?.unreadCount === 'number') {
+          initialCounts[id] = m.unreadCount;
+        }
+      }
+
+      // Em seguida, tentar atualizar via API quando possível (tolerante a falhas)
+      const counts = { ...initialCounts };
       for (const match of matches) {
+        const id = getMatchId(match);
+        if (id == null) continue;
         try {
-          const count = await chatService.getMatchUnreadCount(match.id);
-          counts[match.id] = count.unreadCount;
+          const count = await chatService.getMatchUnreadCount(id);
+          counts[id] = count.unreadCount;
         } catch (error) {
-          console.error(`Error loading unread count for match ${match.id}:`, error);
+          console.error(`Error loading unread count for match ${id}:`, error);
         }
       }
       setUnreadCounts(counts);
@@ -66,9 +128,25 @@ const Matches = ({ navigation }) => {
     setRefreshing(false);
   };
 
-  const handleMatchPress = (match) => {
+  const handleMatchPress = async (match) => {
+    try {
+      // Ao abrir a conversa, zera notificações/contador desse match no backend
+      const id = getMatchId(match);
+      if (id) {
+        await chatService.markAllMessagesAsRead(id);
+        // Atualiza estado local imediatamente para refletir UI
+        setUnreadCounts((prev) => ({ ...prev, [id]: 0 }));
+        setMatches((prev) => prev.map((m) => {
+          const mid = getMatchId(m);
+          if (mid === id) {
+            return { ...m, unreadCount: 0 };
+          }
+          return m;
+        }));
+      }
+    } catch {}
     navigation.navigate('Chat', {
-      matchId: match.id,
+      matchId: getMatchId(match),
       matchData: match,
     });
   };
@@ -91,20 +169,21 @@ const Matches = ({ navigation }) => {
   };
 
   const renderMatch = ({ item }) => {
-    const unreadCount = unreadCounts[item.id] || 0;
+    const otherUser = getOtherUser(item);
+    const unreadCount = getUnreadCountFor(item);
     const hasUnread = unreadCount > 0;
     
     return (
       <TouchableOpacity
         style={getMatchItemStyle()}
         onPress={() => handleMatchPress(item)}
-        activeOpacity={0.7}
+        activeOpacity={0.85}
       >
         <View style={getMatchAvatarContainerStyle()}>
           <View style={getMatchAvatarStyle()}>
-            {item.otherUser?.profilePicture ? (
+            {otherUser?.profilePicture ? (
               <Image
-                source={{ uri: item.otherUser.profilePicture }}
+                source={{ uri: otherUser.profilePicture }}
                 style={{ width: 60, height: 60, borderRadius: 30 }}
               />
             ) : (
@@ -115,25 +194,30 @@ const Matches = ({ navigation }) => {
               />
             )}
           </View>
-          {item.otherUser?.isOnline && (
+          {otherUser?.isOnline && (
             <View style={getOnlineIndicatorStyle()} />
+          )}
+          {hasUnread && (
+            <View style={{ position: 'absolute', top: -2, right: -2, backgroundColor: colors.primary, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: colors.white }}>
+              <Text style={{ color: colors.white, fontFamily: 'Inter-Bold', fontSize: 10 }}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+            </View>
           )}
         </View>
 
         <View style={getMatchInfoStyle()}>
           <View style={getMatchHeaderStyle()}>
             <Text style={getMatchNameStyle()}>
-              {item.otherUser?.name || 'Usuário'}
+              {otherUser?.name || 'Usuário'}
             </Text>
             <Text style={getMatchTimeStyle()}>
-              {formatLastMessageTime(item.lastMessage?.createdAt)}
+              {formatLastMessageTime(item.lastMessage?.createdAt ?? item.lastMessageAt)}
             </Text>
           </View>
 
           <Text style={getMatchLocationStyle()}>
-            {item.otherUser?.age ? `${item.otherUser.age} anos` : ''} 
-            {item.otherUser?.age && item.otherUser?.location ? ' • ' : ''}
-            {item.otherUser?.location || ''}
+            {otherUser?.age ? `${otherUser.age} anos` : ''} 
+            {otherUser?.age && otherUser?.location ? ' • ' : ''}
+            {otherUser?.location || ''}
           </Text>
 
           <View style={getMatchMessageContainerStyle()}>
@@ -143,13 +227,6 @@ const Matches = ({ navigation }) => {
             >
               {item.lastMessage?.content || 'Vocês deram match!'}
             </Text>
-            {hasUnread && (
-              <View style={getUnreadIndicatorStyle()}>
-                <Text style={getUnreadCountTextStyle()}>
-                  {unreadCount > 99 ? '99+' : unreadCount}
-                </Text>
-              </View>
-            )}
           </View>
 
           <View style={getMatchFooterStyle()}>
@@ -165,8 +242,8 @@ const Matches = ({ navigation }) => {
             </View>
 
             <View style={getWorkoutPreferencesStyle()}>
-              {(item.otherUser?.workoutPreferences || []).slice(0, 2).map((preference, index) => (
-                <View key={index} style={getPreferenceChipStyle()}>
+              {(otherUser?.workoutPreferences || []).slice(0, 2).map((preference) => (
+                <View key={(preference?.id ?? preference)?.toString()} style={getPreferenceChipStyle()}>
                   <Text style={getPreferenceChipTextStyle()}>
                     {preference.name || preference}
                   </Text>
@@ -209,6 +286,7 @@ const Matches = ({ navigation }) => {
 
   const getListContainerStyle = () => ({
     flex: 1,
+    backgroundColor: colors.background,
   });
 
   const getEmptyStateStyle = () => ({
@@ -247,8 +325,8 @@ const Matches = ({ navigation }) => {
 
   const getMatchItemStyle = () => ({
     flexDirection: 'row',
-    paddingHorizontal: 24,
-    paddingVertical: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     backgroundColor: colors.white,
     borderBottomWidth: 1,
     borderBottomColor: colors.gray[50],
@@ -260,10 +338,10 @@ const Matches = ({ navigation }) => {
   });
 
   const getMatchAvatarStyle = () => ({
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: colors.gray[200],
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: colors.gray[100],
     alignItems: 'center',
     justifyContent: 'center',
   });
@@ -288,13 +366,13 @@ const Matches = ({ navigation }) => {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: 6,
   });
 
   const getMatchNameStyle = () => ({
     fontFamily: 'Poppins-SemiBold',
-    fontSize: 16,
-    lineHeight: 24,
+    fontSize: 15,
+    lineHeight: 22,
     color: colors.gray[900],
     flex: 1,
   });
@@ -308,16 +386,16 @@ const Matches = ({ navigation }) => {
 
   const getMatchLocationStyle = () => ({
     fontFamily: 'Inter-Regular',
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 12,
+    lineHeight: 18,
     color: colors.gray[600],
-    marginBottom: 8,
+    marginBottom: 6,
   });
 
   const getMatchMessageContainerStyle = () => ({
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
   });
 
   const getMatchMessageStyle = (isRead) => ({
@@ -350,6 +428,7 @@ const Matches = ({ navigation }) => {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginTop: 2,
   });
 
   const getCompatibilityContainerStyle = () => ({
@@ -373,8 +452,8 @@ const Matches = ({ navigation }) => {
 
   const getPreferenceChipStyle = () => ({
     paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingVertical: 3,
+    borderRadius: 10,
     backgroundColor: colors.gray[100],
     marginLeft: 4,
   });
@@ -382,7 +461,7 @@ const Matches = ({ navigation }) => {
   const getPreferenceChipTextStyle = () => ({
     fontFamily: 'Inter-Regular',
     fontSize: 10,
-    lineHeight: 14,
+    lineHeight: 12,
     color: colors.gray[700],
   });
 
@@ -427,9 +506,18 @@ const Matches = ({ navigation }) => {
         ) : (
           <FlatList
             data={matches}
-            keyExtractor={(item) => item.id.toString()}
+            keyExtractor={(item, index) => {
+              const id = getMatchId(item);
+              return id != null ? String(id) : String(index);
+            }}
             renderItem={renderMatch}
             showsVerticalScrollIndicator={false}
+            ItemSeparatorComponent={() => (
+              <View style={{ height: 1, backgroundColor: colors.gray[50], marginLeft: 76 }} />
+            )}
+            windowSize={9}
+            initialNumToRender={12}
+            removeClippedSubviews
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}

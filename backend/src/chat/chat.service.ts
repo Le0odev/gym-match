@@ -10,6 +10,7 @@ import {
   LocationShareDto 
 } from '../dto/chat.dto';
 import { NotificationsService } from '../notifications/notifications.service';
+import { GatewayService } from '../gateway/gateway.service';
 
 @Injectable()
 export class ChatService {
@@ -19,6 +20,7 @@ export class ChatService {
     @InjectRepository(Match)
     private matchRepository: Repository<Match>,
     private notificationsService: NotificationsService,
+    private gatewayService: GatewayService,
   ) {}
 
   async sendMessage(userId: string, sendMessageDto: SendMessageDto): Promise<Message> {
@@ -55,19 +57,24 @@ export class ChatService {
     // Atualizar informações do match
     await this.updateMatchLastMessage(match, savedMessage, userId);
 
-    // Enviar notificação
+    // Enviar notificação com contexto do sender
     await this.notificationsService.notifyNewMessage(
       recipientId,
       userId,
       sendMessageDto.content
     );
 
-    // Retornar mensagem com relações
+    // Emitir evento em tempo real para ambos usuários
     const messageWithRelations = await this.messageRepository.findOne({
       where: { id: savedMessage.id },
       relations: ['sender', 'recipient', 'replyTo'],
     });
+    if (messageWithRelations) {
+      this.gatewayService.emitToUser(recipientId, 'message:new', messageWithRelations);
+      this.gatewayService.emitToUser(userId, 'message:new', messageWithRelations);
+    }
 
+    // Retornar mensagem com relações
     if (!messageWithRelations) {
       throw new NotFoundException('Message not found after creation');
     }

@@ -2,12 +2,11 @@ import React from 'react';
 import {
   View,
   Text,
-  Image,
   StyleSheet,
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { CustomButton } from '../components';
+import { CustomButton, AppLogo } from '../components';
 import { colors } from '../styles/colors';
 
 const { width, height } = Dimensions.get('window');
@@ -16,12 +15,8 @@ const Welcome = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
-        <Image
-          source={require('../assets/images/logo.png')} // Assumindo que você tem um logo.png
-          style={styles.logo}
-          resizeMode="contain"
-        />
-        <Text style={styles.title}>Bem-vindo ao Workout Partner!</Text>
+        <AppLogo size={Math.min(width * 0.6, 180)} showWordmark />
+        <Text style={styles.title}>Bem-vindo ao GymMatch!</Text>
         <Text style={styles.subtitle}>
           Encontre seu parceiro ideal para treinar e alcançar seus objetivos.
         </Text>
@@ -58,11 +53,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 20,
-  },
-  logo: {
-    width: width * 0.6,
-    height: height * 0.2,
-    marginBottom: 30,
   },
   title: {
     fontFamily: 'Poppins-Bold',

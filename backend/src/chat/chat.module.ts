@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { GatewayModule } from '../gateway/gateway.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ChatController } from './chat.controller';
 import { ChatService } from './chat.service';
@@ -9,6 +10,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
   imports: [
     TypeOrmModule.forFeature([Message, Match]),
     NotificationsModule,
+    GatewayModule,
   ],
   controllers: [ChatController],
   providers: [ChatService],

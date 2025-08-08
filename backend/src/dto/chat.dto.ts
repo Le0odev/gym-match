@@ -1,4 +1,5 @@
 import { IsString, IsOptional, IsEnum, IsUUID, IsObject, IsNumber, Min, Max } from 'class-validator';
+import { Type } from 'class-transformer';
 import { MessageType } from '../entities/message.entity';
 
 export class SendMessageDto {
@@ -38,11 +39,13 @@ export class MessageFiltersDto {
   @IsNumber()
   @Min(1)
   @Max(100)
+  @Type(() => Number)
   limit?: number = 50;
 
   @IsOptional()
   @IsNumber()
   @Min(0)
+  @Type(() => Number)
   offset?: number = 0;
 
   @IsOptional()

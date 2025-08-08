@@ -1,4 +1,5 @@
-import { IsString, IsOptional, IsEnum, IsBoolean, IsObject, IsNumber, Min, Max } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsUUID, IsArray, IsBoolean, IsNumber, Min, Max, IsObject } from 'class-validator';
+import { Type } from 'class-transformer';
 import { NotificationType } from '../entities/notification.entity';
 import { DeviceType } from '../entities/push-token.entity';
 
@@ -6,12 +7,18 @@ export class RegisterPushTokenDto {
   @IsString()
   token: string;
 
-  @IsEnum(DeviceType)
-  deviceType: DeviceType;
+  @IsOptional()
+  @IsString()
+  platform?: string; // ios | android | web
 
+  // Campos usados no service
   @IsOptional()
   @IsString()
   deviceId?: string;
+
+  @IsOptional()
+  @IsEnum(DeviceType)
+  deviceType?: DeviceType;
 
   @IsOptional()
   @IsString()
@@ -19,47 +26,51 @@ export class RegisterPushTokenDto {
 }
 
 export class SendNotificationDto {
-  @IsString()
+  @IsUUID()
   userId: string;
 
   @IsEnum(NotificationType)
   type: NotificationType;
 
   @IsString()
-  title: string;
-
-  @IsString()
   message: string;
 
   @IsOptional()
+  @IsString()
+  title?: string;
+
+  // Extras usados pelo service
+  @IsOptional()
   @IsObject()
-  data?: any;
+  data?: Record<string, any>;
 
   @IsOptional()
   @IsBoolean()
-  sendPush?: boolean = true;
+  sendPush?: boolean;
 }
 
 export class BulkNotificationDto {
-  @IsString({ each: true })
+  @IsArray()
+  @IsUUID('4', { each: true })
   userIds: string[];
 
   @IsEnum(NotificationType)
   type: NotificationType;
 
   @IsString()
-  title: string;
-
-  @IsString()
   message: string;
 
   @IsOptional()
-  @IsObject()
-  data?: any;
+  @IsString()
+  title?: string;
 
   @IsOptional()
   @IsBoolean()
   sendPush?: boolean = true;
+
+  @IsOptional()
+  @IsObject()
+  data?: Record<string, any>;
 }
 
 export class NotificationFiltersDto {
@@ -68,16 +79,19 @@ export class NotificationFiltersDto {
   type?: NotificationType;
 
   @IsOptional()
+  @Type(() => Boolean)
   @IsBoolean()
   unreadOnly?: boolean;
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   @Min(1)
   @Max(100)
   limit?: number = 20;
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
   offset?: number = 0;
@@ -86,10 +100,6 @@ export class NotificationFiltersDto {
 export class UpdateNotificationDto {
   @IsOptional()
   @IsBoolean()
-  read?: boolean;
-
-  @IsOptional()
-  @IsBoolean()
-  dismissed?: boolean;
+  read?: boolean
 }
 

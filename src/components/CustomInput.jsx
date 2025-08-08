@@ -22,6 +22,7 @@ const CustomInput = ({
   onRightIconPress,
   style,
   inputStyle,
+  inputContainerStyle,
   labelStyle,
   errorStyle,
   ...props
@@ -53,8 +54,8 @@ const CustomInput = ({
     borderColor: error ? colors.secondary : isFocused ? colors.primary : colors.gray[200],
     borderRadius: 12,
     paddingHorizontal: 16,
-    paddingVertical: multiline ? 12 : 0,
-    minHeight: multiline ? 80 : 48,
+    paddingVertical: multiline ? 8 : 0,
+    minHeight: multiline ? 40 : 48,
   });
 
   const getInputStyle = () => ({
@@ -87,7 +88,7 @@ const CustomInput = ({
         </Text>
       )}
       
-      <View style={getInputContainerStyle()}>
+      <View style={[getInputContainerStyle(), inputContainerStyle]}>
         {leftIcon && (
           <View style={getIconStyle()}>
             <Ionicons

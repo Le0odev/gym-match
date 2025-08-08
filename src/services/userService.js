@@ -1,5 +1,27 @@
 import api from './api';
 
+const logAxiosError = (label, error) => {
+  const status = error?.response?.status;
+  const data = error?.response?.data;
+  const url = error?.config?.url;
+  console.error(`${label}: status=${status} url=${url} data=`, data || error.message);
+};
+
+const buildQuery = (obj = {}, allowedKeys = []) => {
+  const params = new URLSearchParams();
+  Object.keys(obj).forEach((key) => {
+    if ((allowedKeys.length === 0 || allowedKeys.includes(key)) && obj[key] !== undefined && obj[key] !== null && obj[key] !== '') {
+      const value = obj[key];
+      if (Array.isArray(value)) {
+        value.forEach((v) => params.append(key, v));
+      } else {
+        params.append(key, value);
+      }
+    }
+  });
+  return params.toString();
+};
+
 export const userService = {
   // Perfil do usuário
   async getProfile() {
@@ -7,7 +29,7 @@ export const userService = {
       const response = await api.get('/users/me');
       return response.data;
     } catch (error) {
-      console.error('Error getting user profile:', error);
+      logAxiosError('Error getting user profile', error);
       throw error;
     }
   },
@@ -17,7 +39,7 @@ export const userService = {
       const response = await api.put('/users/me', profileData);
       return response.data;
     } catch (error) {
-      console.error('Error updating user profile:', error);
+      logAxiosError('Error updating user profile', error);
       throw error;
     }
   },
@@ -27,7 +49,7 @@ export const userService = {
       const response = await api.put('/users/me/photo', { photoUrl });
       return response.data;
     } catch (error) {
-      console.error('Error updating user photo:', error);
+      logAxiosError('Error updating user photo', error);
       throw error;
     }
   },
@@ -49,7 +71,7 @@ export const userService = {
       });
       return response.data;
     } catch (error) {
-      console.error('Error uploading photo:', error);
+      logAxiosError('Error uploading photo', error);
       if (error.response?.data?.message) {
         throw new Error(error.response.data.message);
       }
@@ -62,7 +84,7 @@ export const userService = {
       const response = await api.put('/users/me/settings', settings);
       return response.data;
     } catch (error) {
-      console.error('Error updating user settings:', error);
+      logAxiosError('Error updating user settings', error);
       throw error;
     }
   },
@@ -72,7 +94,7 @@ export const userService = {
       const response = await api.get('/users/me/stats');
       return response.data;
     } catch (error) {
-      console.error('Error getting user stats:', error);
+      logAxiosError('Error getting user stats', error);
       throw error;
     }
   },
@@ -82,7 +104,7 @@ export const userService = {
       const response = await api.post('/users/me/increment-views');
       return response.data;
     } catch (error) {
-      console.error('Error incrementing views:', error);
+      logAxiosError('Error incrementing views', error);
       throw error;
     }
   },
@@ -92,7 +114,7 @@ export const userService = {
       const response = await api.post('/users/me/increment-workouts');
       return response.data;
     } catch (error) {
-      console.error('Error incrementing workouts:', error);
+      logAxiosError('Error incrementing workouts', error);
       throw error;
     }
   },
@@ -102,7 +124,7 @@ export const userService = {
       const response = await api.put('/users/me/last-seen');
       return response.data;
     } catch (error) {
-      console.error('Error updating last seen:', error);
+      logAxiosError('Error updating last seen', error);
       throw error;
     }
   },
@@ -113,7 +135,7 @@ export const userService = {
       const response = await api.get('/workout-preferences');
       return response.data;
     } catch (error) {
-      console.error('Error getting workout preferences:', error);
+      logAxiosError('Error getting workout preferences', error);
       throw error;
     }
   },
@@ -123,7 +145,7 @@ export const userService = {
       const response = await api.get('/workout-preferences/categories');
       return response.data;
     } catch (error) {
-      console.error('Error getting workout preference categories:', error);
+      logAxiosError('Error getting workout preference categories', error);
       throw error;
     }
   },
@@ -133,7 +155,7 @@ export const userService = {
       const response = await api.get(`/workout-preferences/popular?limit=${limit}`);
       return response.data;
     } catch (error) {
-      console.error('Error getting popular workout preferences:', error);
+      logAxiosError('Error getting popular workout preferences', error);
       throw error;
     }
   },
@@ -145,18 +167,7 @@ export const userService = {
       });
       return response.data;
     } catch (error) {
-      console.error('Error updating workout preferences:', error);
-      throw error;
-    }
-  },
-
-  // Estatísticas do usuário
-  async getUserStats() {
-    try {
-      const response = await api.get('/users/me/stats');
-      return response.data;
-    } catch (error) {
-      console.error('Error getting user stats:', error);
+      logAxiosError('Error updating workout preferences', error);
       throw error;
     }
   },
@@ -164,32 +175,36 @@ export const userService = {
   // Descoberta e matching
   async discoverUsers(filters = {}) {
     try {
-      const queryParams = new URLSearchParams();
-      
-      Object.keys(filters).forEach(key => {
-        if (filters[key] !== undefined && filters[key] !== null && filters[key] !== '') {
-          if (Array.isArray(filters[key])) {
-            filters[key].forEach(value => queryParams.append(key, value));
-          } else {
-            queryParams.append(key, filters[key]);
-          }
-        }
-      });
-
-      const response = await api.get(`/matches/discover?${queryParams.toString()}`);
-      return response.data;
+      // Mapear workoutPreferences -> workoutTypes (back-end espera este nome)
+      const mapped = { ...filters };
+      if (mapped.workoutPreferences) {
+        mapped.workoutTypes = mapped.workoutPreferences;
+        delete mapped.workoutPreferences;
+      }
+      const qp = buildQuery(mapped, [
+        'distance', 'minAge', 'maxAge', 'workoutTypes', 'experienceLevel', 'limit', 'offset'
+      ]);
+      const response = await api.get(`/matches/discover?${qp}`);
+      const data = response.data;
+      return data?.users ?? data; // suporta retorno como objeto ou array
     } catch (error) {
-      console.error('Error discovering users:', error);
+      logAxiosError('Error discovering users', error);
       throw error;
     }
   },
 
   async discoverUsersAdvanced(filters) {
     try {
-      const response = await api.post('/matches/discover/advanced', filters);
-      return response.data;
+      const body = { ...filters };
+      if (body.workoutPreferences) {
+        body.workoutTypes = body.workoutPreferences;
+        delete body.workoutPreferences;
+      }
+      const response = await api.post('/matches/discover/advanced', body);
+      const data = response.data;
+      return data?.users ?? data;
     } catch (error) {
-      console.error('Error discovering users (advanced):', error);
+      logAxiosError('Error discovering users (advanced)', error);
       throw error;
     }
   },
@@ -197,37 +212,43 @@ export const userService = {
   async getNearbyUsers(distance = 5) {
     try {
       const response = await api.get(`/matches/nearby?distance=${distance}`);
-      return response.data;
+      const data = response.data;
+      return data?.users ?? data;
     } catch (error) {
-      console.error('Error getting nearby users:', error);
+      logAxiosError('Error getting nearby users', error);
       throw error;
     }
   },
 
-  async getMatches(params = {}) {
+  async getMatches(filters = {}) {
     try {
-      const queryParams = new URLSearchParams();
-      
-      Object.keys(params).forEach(key => {
-        if (params[key] !== undefined && params[key] !== null) {
-          queryParams.append(key, params[key]);
-        }
-      });
-
-      const response = await api.get(`/matches?${queryParams.toString()}`);
-      return response.data;
+      // Somente chaves permitidas pelo backend
+      const qp = buildQuery(filters, ['unreadOnly', 'recentOnly', 'search', 'limit', 'offset']);
+      const response = await api.get(`/matches?${qp}`);
+      const data = response.data;
+      return data?.matches ?? data; // normaliza para array
     } catch (error) {
-      console.error('Error getting matches:', error);
+      logAxiosError('Error getting matches', error);
       throw error;
     }
   },
 
-  async getSuggestions(limit = 10) {
+  async getMatchStats() {
     try {
-      const response = await api.get(`/matches/suggestions?limit=${limit}`);
+      const response = await api.get('/matches/stats');
       return response.data;
     } catch (error) {
-      console.error('Error getting suggestions:', error);
+      logAxiosError('Error getting match stats', error);
+      throw error;
+    }
+  },
+
+  async getCompatibilityScore(userId) {
+    try {
+      const response = await api.get(`/matches/compatibility/${userId}`);
+      return response.data;
+    } catch (error) {
+      logAxiosError('Error getting compatibility score', error);
       throw error;
     }
   },
@@ -238,7 +259,7 @@ export const userService = {
       const response = await api.post(`/matches/like/${userId}`, body);
       return response.data;
     } catch (error) {
-      console.error('Error liking user:', error);
+      logAxiosError('Error liking user', error);
       throw error;
     }
   },
@@ -249,7 +270,7 @@ export const userService = {
       const response = await api.post(`/matches/super-like/${userId}`, body);
       return response.data;
     } catch (error) {
-      console.error('Error super liking user:', error);
+      logAxiosError('Error super liking user', error);
       throw error;
     }
   },
@@ -260,55 +281,7 @@ export const userService = {
       const response = await api.post(`/matches/skip/${userId}`, body);
       return response.data;
     } catch (error) {
-      console.error('Error skipping user:', error);
-      throw error;
-    }
-  },
-
-  async getMatches(filters = {}) {
-    try {
-      const queryParams = new URLSearchParams();
-      
-      Object.keys(filters).forEach(key => {
-        if (filters[key] !== undefined && filters[key] !== null && filters[key] !== '') {
-          queryParams.append(key, filters[key]);
-        }
-      });
-
-      const response = await api.get(`/matches?${queryParams.toString()}`);
-      return response.data;
-    } catch (error) {
-      console.error('Error getting matches:', error);
-      throw error;
-    }
-  },
-
-  async getMatchStats() {
-    try {
-      const response = await api.get('/matches/stats');
-      return response.data;
-    } catch (error) {
-      console.error('Error getting match stats:', error);
-      throw error;
-    }
-  },
-
-  async getCompatibilityScore(userId) {
-    try {
-      const response = await api.get(`/matches/compatibility/${userId}`);
-      return response.data;
-    } catch (error) {
-      console.error('Error getting compatibility score:', error);
-      throw error;
-    }
-  },
-
-  async unmatch(matchId) {
-    try {
-      const response = await api.post(`/matches/unmatch/${matchId}`);
-      return response.data;
-    } catch (error) {
-      console.error('Error unmatching:', error);
+      logAxiosError('Error skipping user', error);
       throw error;
     }
   },
@@ -318,7 +291,7 @@ export const userService = {
       const response = await api.get('/matches/filters/saved');
       return response.data;
     } catch (error) {
-      console.error('Error getting saved filters:', error);
+      logAxiosError('Error getting saved filters', error);
       throw error;
     }
   },
@@ -328,7 +301,17 @@ export const userService = {
       const response = await api.post('/matches/filters/save', filters);
       return response.data;
     } catch (error) {
-      console.error('Error saving filters:', error);
+      logAxiosError('Error saving filters', error);
+      throw error;
+    }
+  },
+
+  async getSuggestions(limit = 10) {
+    try {
+      const response = await api.get(`/matches/suggestions?limit=${limit}`);
+      return response.data;
+    } catch (error) {
+      logAxiosError('Error getting suggestions', error);
       throw error;
     }
   },

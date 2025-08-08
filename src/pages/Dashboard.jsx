@@ -34,6 +34,11 @@ const Dashboard = ({ navigation }) => {
 
   useEffect(() => {
     loadDashboardData();
+    // Polling leve para atualizar atividade/notifications em tempo quase real
+    const interval = setInterval(() => {
+      loadDashboardData();
+    }, 15000); // 15s
+    return () => clearInterval(interval);
   }, []);
 
   const loadDashboardData = async () => {
@@ -45,7 +50,7 @@ const Dashboard = ({ navigation }) => {
         userService.getUserStats().catch(() => ({ profileViews: 0, completedWorkouts: 0 })),
         userService.getMatchStats().catch(() => ({ totalMatches: 0, newMatches: 0 })),
         userService.getMatches({ limit: 3 }).catch(() => []),
-        notificationService.getNotifications({ limit: 5, read: false }).catch(() => [])
+        notificationService.getNotifications({ limit: 5, unreadOnly: true }).catch(() => ({ notifications: [] }))
       ]);
 
       // Combinar estatísticas
@@ -57,10 +62,10 @@ const Dashboard = ({ navigation }) => {
       });
 
       // Carregar matches recentes
-      setRecentMatches(matches.slice(0, 3));
+      setRecentMatches((Array.isArray(matches) ? matches : []).slice(0, 3));
 
-      // Converter notificações em atividade recente
-      const recentActivityFromNotifications = notifications.map(notification => ({
+      // Converter notificações em atividade recente (com foto quando houver sender)
+      const recentActivityFromNotifications = (notifications.notifications || notifications || []).map(notification => ({
         id: notification.id,
         type: notification.type,
         title: getNotificationTitle(notification.type),
@@ -68,6 +73,8 @@ const Dashboard = ({ navigation }) => {
         time: getTimeAgo(new Date(notification.createdAt)),
         icon: getNotificationIcon(notification.type),
         color: getNotificationColor(notification.type),
+        photoUrl: notification.data?.sender?.profilePicture || null,
+        senderName: notification.data?.sender?.name || null,
       }));
 
       // Se não há notificações suficientes, adicionar atividades simuladas
@@ -607,19 +614,25 @@ const Dashboard = ({ navigation }) => {
           </Text>
           {recentActivity.map((activity) => (
             <View key={activity.id} style={getActivityItemStyle()}>
-              <View style={getActivityIconStyle(activity.color)}>
-                <Ionicons
-                  name={activity.icon}
-                  size={20}
-                  color={activity.color}
-                />
-              </View>
+          {activity.photoUrl ? (
+            <View style={[getActivityIconStyle(activity.color), { overflow: 'hidden' }] }>
+              <Image source={{ uri: activity.photoUrl }} style={{ width: 40, height: 40 }} />
+            </View>
+          ) : (
+            <View style={getActivityIconStyle(activity.color)}>
+              <Ionicons
+                name={activity.icon}
+                size={20}
+                color={activity.color}
+              />
+            </View>
+          )}
               <View style={getActivityContentStyle()}>
                 <Text style={getActivityTitleStyle()}>
                   {activity.title}
                 </Text>
                 <Text style={getActivityDescriptionStyle()}>
-                  {activity.description}
+                  {activity.senderName ? `${activity.senderName}: ` : ''}{activity.description}
                 </Text>
                 <Text style={getActivityTimeStyle()}>
                   {activity.time}

@@ -9,8 +9,8 @@ import {
   TouchableOpacity,
   ScrollView,
   Modal,
-  Slider,
 } from 'react-native';
+import Slider from '@react-native-community/slider';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
@@ -553,248 +553,6 @@ const Discover = ({ navigation }) => {
     color: colors.white,
   });
 
-  if (loading) {
-    return (
-      <SafeAreaView style={getContainerStyle()}>
-        <LoadingSpinner text="Procurando parceiros..." />
-      </SafeAreaView>
-    );
-  }
-
-  return (
-    <SafeAreaView style={getContainerStyle()}>
-      {/* Header */}
-      <View style={getHeaderStyle()}>
-        <Text style={getHeaderTitleStyle()}>
-          Descobrir
-        </Text>
-        <TouchableOpacity
-          style={getFilterButtonStyle()}
-          onPress={() => setShowFilters(true)}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name="options-outline"
-            size={24}
-            color={colors.gray[700]}
-          />
-        </TouchableOpacity>
-      </View>
-
-      {/* Cards */}
-      <View style={getCardsContainerStyle()}>
-        {renderCards()}
-      </View>
-
-      {/* Actions */}
-      {!noMoreUsers && currentIndex < users.length && (
-        <View style={getActionsStyle()}>
-          <TouchableOpacity
-            style={getActionButtonStyle('skip')}
-            onPress={() => forceSwipe('left')}
-            activeOpacity={0.8}
-          >
-            <Ionicons
-              name="close"
-              size={24}
-              color={colors.gray[600]}
-            />
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={getActionButtonStyle('super')}
-            onPress={() => {
-              const currentUser = users[currentIndex];
-              handleSuperLike(currentUser);
-              position.setValue({ x: 0, y: 0 });
-              setCurrentIndex(currentIndex + 1);
-              if (currentIndex >= users.length - 1) {
-                setNoMoreUsers(true);
-              }
-            }}
-            activeOpacity={0.8}
-          >
-            <Ionicons
-              name="star"
-              size={20}
-              color="#FFD700"
-            />
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={getActionButtonStyle('like')}
-            onPress={() => forceSwipe('right')}
-            activeOpacity={0.8}
-          >
-            <Ionicons
-              name="heart"
-              size={24}
-              color={colors.white}
-            />
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Filters Modal */}
-      <Modal
-        visible={showFilters}
-        animationType="slide"
-        presentationStyle="pageSheet"
-      >
-        <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
-          <View style={getFilterModalHeaderStyle()}>
-            <TouchableOpacity
-              onPress={() => setShowFilters(false)}
-              style={getFilterModalCloseStyle()}
-            >
-              <Ionicons name="close" size={24} color={colors.gray[700]} />
-            </TouchableOpacity>
-            <Text style={getFilterModalTitleStyle()}>Filtros</Text>
-            <TouchableOpacity
-              onPress={applyFilters}
-              style={getFilterModalApplyStyle()}
-            >
-              <Text style={getFilterModalApplyTextStyle()}>Aplicar</Text>
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView style={getFilterModalContentStyle()}>
-            {/* Distance Filter */}
-            <View style={getFilterSectionStyle()}>
-              <Text style={getFilterSectionTitleStyle()}>
-                Distância: {filters.distance} km
-              </Text>
-              <Slider
-                style={getSliderStyle()}
-                minimumValue={1}
-                maximumValue={100}
-                value={filters.distance}
-                onValueChange={(value) => setFilters(prev => ({ ...prev, distance: Math.round(value) }))}
-                minimumTrackTintColor={colors.primary}
-                maximumTrackTintColor={colors.gray[300]}
-                thumbStyle={{ backgroundColor: colors.primary }}
-              />
-            </View>
-
-            {/* Age Range Filter */}
-            <View style={getFilterSectionStyle()}>
-              <Text style={getFilterSectionTitleStyle()}>
-                Idade: {filters.ageRange[0]} - {filters.ageRange[1]} anos
-              </Text>
-              <View style={getAgeRangeContainerStyle()}>
-                <View style={getAgeInputContainerStyle()}>
-                  <Text style={getAgeInputLabelStyle()}>Mín:</Text>
-                  <Slider
-                    style={getAgeSliderStyle()}
-                    minimumValue={18}
-                    maximumValue={65}
-                    value={filters.ageRange[0]}
-                    onValueChange={(value) => setFilters(prev => ({ 
-                      ...prev, 
-                      ageRange: [Math.round(value), prev.ageRange[1]] 
-                    }))}
-                    minimumTrackTintColor={colors.primary}
-                    maximumTrackTintColor={colors.gray[300]}
-                  />
-                </View>
-                <View style={getAgeInputContainerStyle()}>
-                  <Text style={getAgeInputLabelStyle()}>Máx:</Text>
-                  <Slider
-                    style={getAgeSliderStyle()}
-                    minimumValue={18}
-                    maximumValue={65}
-                    value={filters.ageRange[1]}
-                    onValueChange={(value) => setFilters(prev => ({ 
-                      ...prev, 
-                      ageRange: [prev.ageRange[0], Math.round(value)] 
-                    }))}
-                    minimumTrackTintColor={colors.primary}
-                    maximumTrackTintColor={colors.gray[300]}
-                  />
-                </View>
-              </View>
-            </View>
-
-            {/* Experience Level Filter */}
-            <View style={getFilterSectionStyle()}>
-              <Text style={getFilterSectionTitleStyle()}>Nível de Experiência</Text>
-              <View style={getExperienceLevelContainerStyle()}>
-                {['Iniciante', 'Intermediário', 'Avançado'].map((level) => (
-                  <TouchableOpacity
-                    key={level}
-                    style={getExperienceLevelButtonStyle(filters.experienceLevel === level)}
-                    onPress={() => setFilters(prev => ({ 
-                      ...prev, 
-                      experienceLevel: prev.experienceLevel === level ? null : level 
-                    }))}
-                  >
-                    <Text style={getExperienceLevelTextStyle(filters.experienceLevel === level)}>
-                      {level}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
-            {/* Workout Preferences Filter */}
-            <View style={getFilterSectionStyle()}>
-              <Text style={getFilterSectionTitleStyle()}>Preferências de Treino</Text>
-              {loadingPreferences ? (
-                <Text style={getLoadingTextStyle()}>Carregando...</Text>
-              ) : (
-                <View style={getWorkoutPreferencesContainerStyle()}>
-                  {workoutPreferences.map((preference) => {
-                    const isSelected = filters.workoutPreferences.includes(preference.id);
-                    return (
-                      <TouchableOpacity
-                        key={preference.id}
-                        style={getWorkoutPreferenceButtonStyle(isSelected)}
-                        onPress={() => {
-                          setFilters(prev => ({
-                            ...prev,
-                            workoutPreferences: isSelected
-                              ? prev.workoutPreferences.filter(id => id !== preference.id)
-                              : [...prev.workoutPreferences, preference.id]
-                          }));
-                        }}
-                      >
-                        <Text style={getWorkoutPreferenceTextStyle(isSelected)}>
-                          {preference.name}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              )}
-            </View>
-
-            {/* Reset Filters */}
-            <View style={getFilterSectionStyle()}>
-              <CustomButton
-                title="Limpar Filtros"
-                variant="outline"
-                onPress={() => {
-                  setFilters({
-                    distance: 25,
-                    ageRange: [18, 50],
-                    workoutPreferences: [],
-                    experienceLevel: null,
-                  });
-                }}
-              />
-            </View>
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
-    </SafeAreaView>
-  );
-};
-
-export default Discover;
-
-
-
-  // Filter Modal Styles
   const getFilterModalHeaderStyle = () => ({
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -918,4 +676,238 @@ export default Discover;
     textAlign: 'center',
     paddingVertical: 20,
   });
+
+  return (
+    <SafeAreaView style={getContainerStyle()}>
+      {/* Header */}
+      <View style={getHeaderStyle()}>
+        <Text style={getHeaderTitleStyle()}>
+          Descobrir
+        </Text>
+        <TouchableOpacity
+          style={getFilterButtonStyle()}
+          onPress={() => setShowFilters(true)}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name="options-outline"
+            size={24}
+            color={colors.gray[700]}
+          />
+        </TouchableOpacity>
+      </View>
+
+      {/* Cards */}
+      <View style={getCardsContainerStyle()}>
+        {renderCards()}
+      </View>
+
+      {/* Actions */}
+      {!noMoreUsers && currentIndex < users.length && (
+        <View style={getActionsStyle()}>
+          <TouchableOpacity
+            style={getActionButtonStyle('skip')}
+            onPress={() => forceSwipe('left')}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name="close"
+              size={24}
+              color={colors.gray[600]}
+            />
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={getActionButtonStyle('super')}
+            onPress={() => {
+              const currentUser = users[currentIndex];
+              handleSuperLike(currentUser);
+              position.setValue({ x: 0, y: 0 });
+              setCurrentIndex(currentIndex + 1);
+              if (currentIndex >= users.length - 1) {
+                setNoMoreUsers(true);
+              }
+            }}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name="star"
+              size={20}
+              color="#FFD700"
+            />
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={getActionButtonStyle('like')}
+            onPress={() => forceSwipe('right')}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name="heart"
+              size={24}
+              color={colors.white}
+            />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Filters Modal */}
+      <Modal
+        visible={showFilters}
+        animationType="slide"
+        presentationStyle="pageSheet"
+      >
+        <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+          <View style={getFilterModalHeaderStyle()}>
+            <TouchableOpacity
+              onPress={() => setShowFilters(false)}
+              style={getFilterModalCloseStyle()}
+            >
+              <Ionicons name="close" size={24} color={colors.gray[700]} />
+            </TouchableOpacity>
+            <Text style={getFilterModalTitleStyle()}>Filtros</Text>
+            <TouchableOpacity
+              onPress={applyFilters}
+              style={getFilterModalApplyStyle()}
+            >
+              <Text style={getFilterModalApplyTextStyle()}>Aplicar</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={getFilterModalContentStyle()}>
+            {/* Distance Filter */}
+            <View style={getFilterSectionStyle()}>
+              <Text style={getFilterSectionTitleStyle()}>
+                Distância: {filters.distance} km
+              </Text>
+              <Slider
+                style={getSliderStyle()}
+                minimumValue={1}
+                maximumValue={100}
+                value={filters.distance}
+                onValueChange={(value) => setFilters(prev => ({ ...prev, distance: Math.round(value) }))}
+                minimumTrackTintColor={colors.primary}
+                maximumTrackTintColor={colors.gray[300]}
+                thumbTintColor={colors.primary}
+              />
+            </View>
+
+            {/* Age Range Filter */}
+            <View style={getFilterSectionStyle()}>
+              <Text style={getFilterSectionTitleStyle()}>
+                Idade: {filters.ageRange[0]} - {filters.ageRange[1]} anos
+              </Text>
+              <View style={getAgeRangeContainerStyle()}>
+                <View style={getAgeInputContainerStyle()}>
+                  <Text style={getAgeInputLabelStyle()}>Mín:</Text>
+                  <Slider
+                    style={getAgeSliderStyle()}
+                    minimumValue={18}
+                    maximumValue={65}
+                    value={filters.ageRange[0]}
+                    onValueChange={(value) => setFilters(prev => ({ 
+                      ...prev, 
+                      ageRange: [Math.round(value), prev.ageRange[1]] 
+                    }))}
+                    minimumTrackTintColor={colors.primary}
+                    maximumTrackTintColor={colors.gray[300]}
+                    thumbTintColor={colors.primary}
+                  />
+                </View>
+                <View style={getAgeInputContainerStyle()}>
+                  <Text style={getAgeInputLabelStyle()}>Máx:</Text>
+                  <Slider
+                    style={getAgeSliderStyle()}
+                    minimumValue={18}
+                    maximumValue={65}
+                    value={filters.ageRange[1]}
+                    onValueChange={(value) => setFilters(prev => ({ 
+                      ...prev, 
+                      ageRange: [prev.ageRange[0], Math.round(value)] 
+                    }))}
+                    minimumTrackTintColor={colors.primary}
+                    maximumTrackTintColor={colors.gray[300]}
+                    thumbTintColor={colors.primary}
+                  />
+                </View>
+              </View>
+            </View>
+
+            {/* Experience Level Filter */}
+            <View style={getFilterSectionStyle()}>
+              <Text style={getFilterSectionTitleStyle()}>Nível de Experiência</Text>
+              <View style={getExperienceLevelContainerStyle()}>
+                {['Iniciante', 'Intermediário', 'Avançado'].map((level) => (
+                  <TouchableOpacity
+                    key={level}
+                    style={getExperienceLevelButtonStyle(filters.experienceLevel === level)}
+                    onPress={() => setFilters(prev => ({ 
+                      ...prev, 
+                      experienceLevel: prev.experienceLevel === level ? null : level 
+                    }))}
+                  >
+                    <Text style={getExperienceLevelTextStyle(filters.experienceLevel === level)}>
+                      {level}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Workout Preferences Filter */}
+            <View style={getFilterSectionStyle()}>
+              <Text style={getFilterSectionTitleStyle()}>Preferências de Treino</Text>
+              {loadingPreferences ? (
+                <Text style={getLoadingTextStyle()}>Carregando...</Text>
+              ) : (
+                <View style={getWorkoutPreferencesContainerStyle()}>
+                  {workoutPreferences.map((preference) => {
+                    const isSelected = filters.workoutPreferences.includes(preference.id);
+                    return (
+                      <TouchableOpacity
+                        key={preference.id}
+                        style={getWorkoutPreferenceButtonStyle(isSelected)}
+                        onPress={() => {
+                          setFilters(prev => ({
+                            ...prev,
+                            workoutPreferences: isSelected
+                              ? prev.workoutPreferences.filter(id => id !== preference.id)
+                              : [...prev.workoutPreferences, preference.id]
+                          }));
+                        }}
+                      >
+                        <Text style={getWorkoutPreferenceTextStyle(isSelected)}>
+                          {preference.name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
+
+            {/* Reset Filters */}
+            <View style={getFilterSectionStyle()}>
+              <CustomButton
+                title="Limpar Filtros"
+                variant="outline"
+                onPress={() => {
+                  setFilters({
+                    distance: 25,
+                    ageRange: [18, 50],
+                    workoutPreferences: [],
+                    experienceLevel: null,
+                  });
+                }}
+              />
+            </View>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+    </SafeAreaView>
+  );
+};
+
+export default Discover;
+
 

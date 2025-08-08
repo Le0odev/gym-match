@@ -20,6 +20,7 @@ import { MatchesModule } from './matches/matches.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ChatModule } from './chat/chat.module';
 import { SeedService } from './seed.service';
+import { GatewayModule } from './gateway/gateway.module';
 
 @Module({
   imports: [
@@ -57,6 +58,7 @@ import { SeedService } from './seed.service';
     MatchesModule,
     NotificationsModule,
     ChatModule,
+    GatewayModule,
   ],
   controllers: [AppController],
   providers: [AppService, SeedService],

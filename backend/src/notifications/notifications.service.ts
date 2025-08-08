@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Notification, NotificationType, NotificationStatus, PushToken } from '../entities';
+import { Notification, NotificationType, NotificationStatus, PushToken, DeviceType } from '../entities';
 import { 
   RegisterPushTokenDto, 
   SendNotificationDto, 
@@ -33,26 +33,38 @@ export class NotificationsService {
       where: { token: registerDto.token },
     });
 
+    // Normalizar deviceType se vier como string solta
+    const normalizedDeviceType = ((): DeviceType | undefined => {
+      if (!registerDto.deviceType) return undefined;
+      if (typeof registerDto.deviceType === 'string') {
+        const v = registerDto.deviceType.toLowerCase();
+        if (v === 'ios') return DeviceType.IOS;
+        if (v === 'android') return DeviceType.ANDROID;
+        if (v === 'web') return DeviceType.WEB;
+        return undefined;
+      }
+      return registerDto.deviceType;
+    })();
+
     if (existingToken) {
       // Atualizar token existente
       existingToken.userId = userId;
       existingToken.isActive = true;
       existingToken.lastUsed = new Date();
-      existingToken.deviceType = registerDto.deviceType;
-      if (registerDto.deviceId) {
-        existingToken.deviceId = registerDto.deviceId;
-      }
-      if (registerDto.appVersion) {
-        existingToken.appVersion = registerDto.appVersion;
-      }
+      if (normalizedDeviceType) existingToken.deviceType = normalizedDeviceType;
+      if (registerDto.deviceId) existingToken.deviceId = registerDto.deviceId;
+      if (registerDto.appVersion) existingToken.appVersion = registerDto.appVersion;
       
       return this.pushTokenRepository.save(existingToken);
     }
 
-    // Criar novo token
+    // Criar novo token (somente campos existentes na entidade)
     const pushToken = this.pushTokenRepository.create({
       userId,
-      ...registerDto,
+      token: registerDto.token,
+      deviceType: normalizedDeviceType ?? DeviceType.ANDROID,
+      deviceId: registerDto.deviceId,
+      appVersion: registerDto.appVersion,
       isActive: true,
       lastUsed: new Date(),
     });
@@ -219,12 +231,20 @@ export class NotificationsService {
   }
 
   async notifyNewMessage(recipientId: string, senderId: string, message: string): Promise<void> {
+    // Incluir dados do remetente para permitir exibir avatar/nome no app
+    const sender = await this.notificationRepository.manager.findOne('users', { where: { id: senderId } as any });
+    const senderPublic = sender ? {
+      id: sender.id,
+      name: sender.name,
+      profilePicture: sender.profilePicture,
+    } : undefined;
+
     await this.sendNotification({
       userId: recipientId,
       type: NotificationType.MESSAGE,
       title: 'Nova mensagem 💬',
       message: message.length > 50 ? `${message.substring(0, 50)}...` : message,
-      data: { senderId },
+      data: { senderId, sender: senderPublic },
       sendPush: true,
     });
   }
