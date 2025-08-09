@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Message, MessageStatus, MessageType, Match, MatchStatus } from '../entities';
+import { Message, MessageStatus, MessageType, Match, MatchStatus, WorkoutInvite, WorkoutInviteStatus, User, Gym } from '../entities';
 import { 
   SendMessageDto, 
   EditMessageDto, 
@@ -19,6 +19,12 @@ export class ChatService {
     private messageRepository: Repository<Message>,
     @InjectRepository(Match)
     private matchRepository: Repository<Match>,
+    @InjectRepository(WorkoutInvite)
+    private inviteRepository: Repository<WorkoutInvite>,
+    @InjectRepository(User)
+    private userRepository: Repository<User>,
+    @InjectRepository(Gym)
+    private gymRepository: Repository<Gym>,
     private notificationsService: NotificationsService,
     private gatewayService: GatewayService,
   ) {}
@@ -212,22 +218,121 @@ export class ChatService {
   }
 
   async sendWorkoutInvite(userId: string, inviteDto: WorkoutInviteDto): Promise<Message> {
-    const workoutData = {
-      workoutType: inviteDto.workoutType,
+    const match = await this.matchRepository.findOne({ where: { id: inviteDto.matchId } });
+    if (!match) throw new NotFoundException('Match not found');
+    if (match.userAId !== userId && match.userBId !== userId) throw new ForbiddenException('No access');
+
+    // Criar entidade de invite
+    const invite = this.inviteRepository.create({
+      matchId: inviteDto.matchId,
+      inviterId: userId,
+      inviteeId: match.userAId === userId ? match.userBId : match.userAId,
+      workoutType: inviteDto.workoutType as any,
       date: inviteDto.date,
       time: inviteDto.time,
-      location: inviteDto.location,
-    };
+      gymId: inviteDto.gymId,
+      address: inviteDto.location,
+      latitude: inviteDto.latitude,
+      longitude: inviteDto.longitude,
+      status: WorkoutInviteStatus.PENDING,
+    });
+    const savedInvite = await this.inviteRepository.save(invite);
 
-    const content = inviteDto.message || 
-      `Convite para treino de ${inviteDto.workoutType} em ${inviteDto.date} às ${inviteDto.time}`;
-
-    return this.sendMessage(userId, {
+    const content = inviteDto.message || `Convite para treino de ${inviteDto.workoutType} em ${inviteDto.date} às ${inviteDto.time}`;
+    const message = await this.sendMessage(userId, {
       matchId: inviteDto.matchId,
       type: MessageType.WORKOUT_INVITE,
       content,
-      metadata: workoutData,
+      metadata: {
+        inviteId: savedInvite.id,
+        workoutType: savedInvite.workoutType,
+        date: savedInvite.date,
+        time: savedInvite.time,
+        gymId: savedInvite.gymId,
+        address: savedInvite.address,
+        latitude: savedInvite.latitude,
+        longitude: savedInvite.longitude,
+        status: savedInvite.status,
+      },
     });
+
+    // Notificar socket
+    this.gatewayService.emitToUser(invite.inviteeId, 'invite:new', { invite: savedInvite, message });
+    this.gatewayService.emitToUser(invite.inviterId, 'invite:new', { invite: savedInvite, message });
+
+    return message;
+  }
+
+  async updateWorkoutInviteStatus(userId: string, inviteId: string, status: 'accepted' | 'rejected' | 'canceled'): Promise<Message> {
+    const invite = await this.inviteRepository.findOne({ where: { id: inviteId } });
+    if (!invite) throw new NotFoundException('Invite not found');
+
+    const isInviter = invite.inviterId === userId;
+    const isInvitee = invite.inviteeId === userId;
+
+    if (status === 'canceled' && !isInviter) throw new ForbiddenException('Only inviter can cancel');
+    if ((status === 'accepted' || status === 'rejected') && !isInvitee) throw new ForbiddenException('Only invitee can change this status');
+
+    invite.status = status as WorkoutInviteStatus;
+    const saved = await this.inviteRepository.save(invite);
+
+    const statusText = status === 'accepted' ? 'Convite aceito' : status === 'rejected' ? 'Convite recusado' : 'Convite cancelado';
+    const message = await this.sendMessage(userId, {
+      matchId: invite.matchId,
+      type: MessageType.WORKOUT_INVITE,
+      content: statusText,
+      metadata: {
+        inviteId: invite.id,
+        status: saved.status,
+      },
+    });
+
+    const otherUserId = isInviter ? invite.inviteeId : invite.inviterId;
+    this.gatewayService.emitToUser(otherUserId, 'invite:update', { invite: saved, message });
+    this.gatewayService.emitToUser(userId, 'invite:update', { invite: saved, message });
+
+    return message;
+  }
+
+  async getMatchInvites(userId: string, matchId: string) {
+    const match = await this.matchRepository.findOne({ where: { id: matchId } });
+    if (!match || (match.userAId !== userId && match.userBId !== userId)) {
+      throw new ForbiddenException('No access');
+    }
+    const invites = await this.inviteRepository.find({ where: { matchId }, order: { createdAt: 'DESC' } });
+    return { invites, total: invites.length };
+  }
+
+  // Retorna sugestões de academias próximas ao ponto médio entre os usuários do match
+  async getNearbyGymsForMatch(userId: string, matchId: string, radiusMeters: number = 5000, limit: number = 5) {
+    const match = await this.matchRepository.findOne({ where: { id: matchId } });
+    if (!match || (match.userAId !== userId && match.userBId !== userId)) {
+      throw new ForbiddenException('No access');
+    }
+
+    const userA = await this.userRepository.findOne({ where: { id: match.userAId } });
+    const userB = await this.userRepository.findOne({ where: { id: match.userBId } });
+
+    if (!userA?.currentLocation || !userB?.currentLocation) {
+      return { gyms: [], total: 0 };
+    }
+
+    // Ponto médio simples entre duas coordenadas (aprox.)
+    // PostGIS: usar ST_LineInterpolatePoint(ST_MakeLine(ptA, ptB), 0.5)
+    const qb = this.gymRepository.createQueryBuilder('gym')
+      .where('gym.location IS NOT NULL')
+      .andWhere('ST_DWithin(gym.location, ST_LineInterpolatePoint(ST_MakeLine(:ptA, :ptB), 0.5), :radius)')
+      .setParameters({
+        ptA: userA.currentLocation,
+        ptB: userB.currentLocation,
+        radius: radiusMeters,
+      })
+      .orderBy('ST_Distance(gym.location, ST_LineInterpolatePoint(ST_MakeLine(:ptA, :ptB), 0.5))')
+      .setParameters({ ptA: userA.currentLocation, ptB: userB.currentLocation })
+      .limit(limit);
+
+    const gyms = await qb.getMany();
+    return { gyms, total: gyms.length };
   }
 
   async shareLocation(userId: string, locationDto: LocationShareDto): Promise<Message> {

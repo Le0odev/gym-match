@@ -9,6 +9,8 @@ import {
   Platform,
   Image,
   Keyboard,
+  Modal,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,6 +21,8 @@ import { getSocket } from '../services/api';
 import { eventBus } from '../services/eventBus';
 import { notificationService } from '../services/notificationService';
 import { useAuth } from '../contexts/AuthContext';
+import locationService from '../services/locationService';
+import { useLocation } from '../hooks/useLocation';
 
 const Chat = ({ navigation, route }) => {
   const [messages, setMessages] = useState([]);
@@ -32,6 +36,37 @@ const Chat = ({ navigation, route }) => {
   const didInitialScrollRef = useRef(false);
   const isNearBottomRef = useRef(true);
   const scrollScheduledRef = useRef(false);
+  const [inviteModalVisible, setInviteModalVisible] = useState(false);
+  const [inviteType, setInviteType] = useState('musculacao');
+  const [inviteDate, setInviteDate] = useState(() => {
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  });
+  const [inviteTime, setInviteTime] = useState(() => {
+    const d = new Date();
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mi = String(d.getMinutes()).padStart(2, '0');
+    return `${hh}:${mi}`;
+  });
+  const [inviteLocation, setInviteLocation] = useState('');
+  const [inviteGymId, setInviteGymId] = useState(undefined);
+  const [nearbyGyms, setNearbyGyms] = useState([]);
+  const [inviteError, setInviteError] = useState('');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const { location: currentLocation } = useLocation();
+
+  // Lazy require DateTimePicker to avoid hard dependency if not installed
+  let DateTimePicker = null;
+  try {
+    // eslint-disable-next-line global-require
+    DateTimePicker = require('@react-native-community/datetimepicker').default;
+  } catch (e) {
+    DateTimePicker = null;
+  }
 
   // Normaliza o objeto de match para sempre ter `otherUser`
   const normalizeMatch = (m) => {
@@ -66,6 +101,45 @@ const Chat = ({ navigation, route }) => {
     }, delayMs);
   };
 
+  // Helpers de UI (pt-BR)
+  const getStatusChip = (status) => {
+    const map = {
+      accepted: { text: 'Aceito', bg: '#22c55e33', fg: '#16a34a', icon: 'checkmark-circle' },
+      rejected: { text: 'Recusado', bg: '#ef444433', fg: '#b91c1c', icon: 'close-circle' },
+      canceled: { text: 'Cancelado', bg: colors.gray[200], fg: colors.gray[700], icon: 'ban' },
+      pending:  { text: 'Pendente', bg: '#f59e0b33', fg: '#b45309', icon: 'time' },
+    };
+    return map[status] || map.pending;
+  };
+
+  const getWorkoutTypeLabel = (t) => {
+    const map = {
+      musculacao: 'Musculação',
+      cardio: 'Cardio',
+      funcional: 'Funcional',
+      hiit: 'HIIT',
+      cross: 'Cross',
+      outro: 'Outro',
+    };
+    return map[t] || t;
+  };
+
+  const formatInviteDateTime = (dateStr, timeStr) => {
+    try {
+      if (!dateStr || !timeStr) return '';
+      const [y, m, d] = dateStr.split('-').map((n) => parseInt(n, 10));
+      const [hh, mm] = timeStr.split(':').map((n) => parseInt(n, 10));
+      const dt = new Date(Date.UTC(y, m - 1, d, hh, mm));
+      // Mostrar no timezone local
+      const local = new Date(dt.getTime());
+      const optsDate = { day: '2-digit', month: '2-digit', year: 'numeric' };
+      const optsTime = { hour: '2-digit', minute: '2-digit' };
+      return `${local.toLocaleDateString('pt-BR', optsDate)} ${local.toLocaleTimeString('pt-BR', optsTime)}`;
+    } catch (_) {
+      return `${dateStr} ${timeStr}`;
+    }
+  };
+
   useEffect(() => {
     if (matchData) {
       setMatch(normalizeMatch(matchData));
@@ -89,13 +163,54 @@ const Chat = ({ navigation, route }) => {
           scheduleScrollToEnd(true, 40);
         }
       };
+      const onInviteNew = ({ invite, message }) => {
+        if (message?.matchId === matchId) {
+          setMessages((prev) => dedupeById([...prev, message]));
+          scheduleScrollToEnd(true, 40);
+        }
+      };
+      const onInviteUpdate = ({ invite, message }) => {
+        // Atualiza o status localmente sem recarregar tudo
+        setMessages((prev) => {
+          let found = false;
+          const updated = prev.map((m) => {
+            if ((m.type === 'WORKOUT_INVITE' || m.type === 'workout_invite') && m.metadata?.inviteId === invite.id) {
+              found = true;
+              return { ...m, metadata: { ...m.metadata, status: invite.status } };
+            }
+            return m;
+          });
+          if (!found && message) {
+            return dedupeById([...updated, message]);
+          }
+          return updated;
+        });
+      };
       socket.on('message:new', handler);
+      socket.on('invite:new', onInviteNew);
+      socket.on('invite:update', onInviteUpdate);
       cleanup = () => {
         socket.off('message:new', handler);
+        socket.off('invite:new', onInviteNew);
+        socket.off('invite:update', onInviteUpdate);
       };
     })();
     return () => { clearTimeout(t); if (cleanup) cleanup(); };
   }, [matchId]);
+
+  // Load nearby gyms when opening invite modal
+  useEffect(() => {
+    const loadGyms = async () => {
+      if (!inviteModalVisible) return;
+      try {
+        const res = await chatService.getNearbyGyms(matchId, { radius: 5000, limit: 5 });
+        setNearbyGyms(res.gyms || []);
+      } catch (_) {
+        setNearbyGyms([]);
+      }
+    };
+    loadGyms();
+  }, [inviteModalVisible, matchId]);
 
   const loadMessages = async () => {
     try {
@@ -225,21 +340,87 @@ const Chat = ({ navigation, route }) => {
 
   const renderMessage = useCallback(({ item }) => {
     const isMyMessage = item.senderId === user?.id;
+    const isInvite = item.type === 'WORKOUT_INVITE' || item.type === 'workout_invite';
+    const meta = item.metadata || {};
     
     return (
       <View style={getMessageContainerStyle(isMyMessage)}>
         <View style={getMessageBubbleStyle(isMyMessage)}>
-          {item.type === 'WORKOUT_INVITE' ? (
-            <View style={getWorkoutInviteStyle()}>
-              <Ionicons
-                name="fitness"
-                size={20}
-                color={colors.primary}
-                style={{ marginRight: 8 }}
-              />
-              <Text style={getWorkoutInviteTextStyle()}>
-                Convite para treino
+          {isInvite ? (
+            <View>
+              <View style={[getWorkoutInviteStyle(), { justifyContent: 'space-between' }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Ionicons name="fitness" size={20} color={colors.primary} style={{ marginRight: 8 }} />
+                  <Text style={getWorkoutInviteTextStyle()}>
+                    Convite para treino
+                  </Text>
+                </View>
+                {meta.status ? (() => { const st = getStatusChip(meta.status); return (
+                  <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 8, backgroundColor: st.bg, marginLeft: 8 }}>
+                    <Text style={{ fontFamily: 'Inter-Medium', fontSize: 12, lineHeight: 14, color: st.fg }}>{st.text}</Text>
+                  </View>
+                ); })() : null}
+              </View>
+              <Text style={{ fontFamily: 'Inter-Regular', color: isMyMessage ? colors.white : colors.gray[800], marginTop: 6 }}>
+                {meta.workoutType ? `${getWorkoutTypeLabel(meta.workoutType)}` : ''}
+                {meta.date && meta.time ? ` — ${formatInviteDateTime(meta.date, meta.time)}` : ''}
               </Text>
+              {meta.address ? (
+                <Text style={{ fontFamily: 'Inter-Regular', color: isMyMessage ? colors.white : colors.gray[700], marginTop: 2 }}>
+                  Local: {meta.address}
+                </Text>
+              ) : null}
+
+              {/* Ações */}
+              {!meta.status || meta.status === 'pending' ? (
+                <View style={{ flexDirection: 'row', marginTop: 8 }}>
+                  {isMyMessage ? (
+                    <TouchableOpacity onPress={async () => {
+                      try {
+                        if (!meta.inviteId) return;
+                        // otimista
+                        updateInviteStatusLocally(meta.inviteId, 'canceled');
+                        await chatService.cancelWorkoutInvite(meta.inviteId);
+                      } catch (e) {
+                        Alert.alert('Erro', 'Não foi possível cancelar');
+                      }
+                    }} style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12, backgroundColor: colors.white + '20', borderWidth: isMyMessage ? 0 : 1, borderColor: colors.gray[200] }}>
+                      <Text style={{ color: isMyMessage ? colors.white : colors.gray[800] }}>Cancelar</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <>
+                      <TouchableOpacity onPress={async () => {
+                        try {
+                          if (!meta.inviteId) return;
+                          updateInviteStatusLocally(meta.inviteId, 'accepted');
+                          await chatService.acceptWorkoutInvite(meta.inviteId);
+                        } catch (e) {
+                          Alert.alert('Erro', 'Não foi possível aceitar');
+                        }
+                      }} style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12, backgroundColor: colors.primary, marginRight: 8 }}>
+                        <Text style={{ color: colors.white }}>Aceitar</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={async () => {
+                        try {
+                          if (!meta.inviteId) return;
+                          updateInviteStatusLocally(meta.inviteId, 'rejected');
+                          await chatService.rejectWorkoutInvite(meta.inviteId);
+                        } catch (e) {
+                          Alert.alert('Erro', 'Não foi possível recusar');
+                        }
+                      }} style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.gray[300] }}>
+                        <Text style={{ color: isMyMessage ? colors.white : colors.gray[800] }}>Recusar</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                </View>
+              ) : null}
+              {meta.status && meta.status !== 'pending' ? (() => { const st = getStatusChip(meta.status); return (
+                <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center' }}>
+                  <Ionicons name={st.icon} size={16} color={st.fg} style={{ marginRight: 6 }} />
+                  <Text style={{ fontFamily: 'Inter-Medium', color: st.fg }}>{st.text === 'Aceito' ? 'Confirmado' : st.text}</Text>
+                </View>
+              ); })() : null}
             </View>
           ) : (
             <Text style={getMessageTextStyle(isMyMessage)}>
@@ -264,6 +445,15 @@ const Chat = ({ navigation, route }) => {
       </View>
     );
   }, [user?.id]);
+
+  const updateInviteStatusLocally = (inviteId, newStatus) => {
+    setMessages((prev) => prev.map((m) => {
+      if ((m.type === 'WORKOUT_INVITE' || m.type === 'workout_invite') && m.metadata?.inviteId === inviteId) {
+        return { ...m, metadata: { ...m.metadata, status: newStatus } };
+      }
+      return m;
+    }));
+  };
 
   const getContainerStyle = () => ({
     flex: 1,
@@ -466,7 +656,7 @@ const Chat = ({ navigation, route }) => {
         <View style={getHeaderActionsStyle()}>
           <TouchableOpacity
             style={getActionButtonStyle()}
-            onPress={sendWorkoutInvite}
+            onPress={() => setInviteModalVisible(true)}
             activeOpacity={0.7}
           >
             <Ionicons
@@ -557,6 +747,136 @@ const Chat = ({ navigation, route }) => {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Invite Modal */}
+      <Modal visible={inviteModalVisible} transparent animationType="slide" onRequestClose={() => setInviteModalVisible(false)}>
+        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.2)' }}>
+          <View style={{ backgroundColor: colors.white, borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: '80%' }}>
+            <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: colors.gray[100] }}>
+              <Text style={{ fontFamily: 'Poppins-SemiBold', fontSize: 16, color: colors.gray[900] }}>Convidar para treino</Text>
+            </View>
+            <ScrollView contentContainerStyle={{ padding: 16 }}>
+              <Text style={{ fontFamily: 'Inter-Medium', marginBottom: 8, color: colors.gray[700] }}>Tipo</Text>
+              <View style={{ flexDirection: 'row', marginBottom: 16, flexWrap: 'wrap' }}>
+                {['musculacao','cardio','funcional','hiit','cross','outro'].map((t) => (
+                  <TouchableOpacity key={t} onPress={() => setInviteType(t)} activeOpacity={0.8} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: inviteType===t?colors.primary:colors.gray[200], backgroundColor: inviteType===t? colors.primary+'15': colors.white, marginRight: 8, marginBottom: 8 }}>
+                    <Text style={{ color: inviteType===t? colors.primary: colors.gray[800], fontFamily: 'Inter-Medium' }}>{t}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={{ fontFamily: 'Inter-Medium', marginBottom: 8, color: colors.gray[700] }}>Data & Hora</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                <TouchableOpacity onPress={() => setShowDatePicker(true)} activeOpacity={0.8} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1, borderColor: colors.gray[200], backgroundColor: colors.white, marginRight: 8 }}>
+                  <Text style={{ fontFamily: 'Inter-Medium', color: colors.gray[800] }}>{inviteDate}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setShowTimePicker(true)} activeOpacity={0.8} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1, borderColor: colors.gray[200], backgroundColor: colors.white }}>
+                  <Text style={{ fontFamily: 'Inter-Medium', color: colors.gray[800] }}>{inviteTime}</Text>
+                </TouchableOpacity>
+              </View>
+              {DateTimePicker && showDatePicker && (
+                <DateTimePicker
+                  value={new Date()}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={(e, d) => {
+                    setShowDatePicker(false);
+                    if (!d) return;
+                    const yyyy = d.getFullYear();
+                    const mm = String(d.getMonth()+1).padStart(2,'0');
+                    const dd = String(d.getDate()).padStart(2,'0');
+                    setInviteDate(`${yyyy}-${mm}-${dd}`);
+                    setInviteError('');
+                  }}
+                />
+              )}
+              {DateTimePicker && showTimePicker && (
+                <DateTimePicker
+                  value={new Date()}
+                  mode="time"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={(e, d) => {
+                    setShowTimePicker(false);
+                    if (!d) return;
+                    const hh = String(d.getHours()).padStart(2,'0');
+                    const mi = String(d.getMinutes()).padStart(2,'0');
+                    setInviteTime(`${hh}:${mi}`);
+                    setInviteError('');
+                  }}
+                />
+              )}
+
+              <Text style={{ fontFamily: 'Inter-Medium', marginBottom: 8, color: colors.gray[700] }}>Local</Text>
+              <CustomInput placeholder="Academia ou endereço" value={inviteLocation} onChangeText={setInviteLocation} inputStyle={{ minHeight: 40 }} />
+              {!!currentLocation?.address?.formattedAddress && (
+                <TouchableOpacity onPress={() => setInviteLocation(currentLocation.address.formattedAddress)} activeOpacity={0.7} style={{ marginTop: 8 }}>
+                  <Text style={{ color: colors.primary }}>Usar minha localização: {currentLocation.address.formattedAddress}</Text>
+                </TouchableOpacity>
+              )}
+              {nearbyGyms.length > 0 && (
+                <View style={{ marginTop: 10 }}>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    {nearbyGyms.map((g) => (
+                      <TouchableOpacity key={g.id} onPress={() => { setInviteLocation(g.name); setInviteGymId(g.id); }} activeOpacity={0.9} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, borderWidth: 1, borderColor: colors.gray[200], backgroundColor: colors.white, marginRight: 8 }}>
+                        <Text style={{ fontFamily: 'Inter-Medium', color: colors.gray[800] }}>{g.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+              {!!inviteError && (
+                <Text style={{ color: colors.secondary, marginTop: 8 }}>{inviteError}</Text>
+              )}
+
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 16 }}>
+                <TouchableOpacity onPress={() => setInviteModalVisible(false)} style={{ paddingVertical: 10, paddingHorizontal: 16, marginRight: 8 }}>
+                  <Text style={{ color: colors.gray[600] }}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={async () => {
+                  try {
+                    // validação de data/hora futura
+                    const parts = inviteDate.split('-');
+                    const tparts = inviteTime.split(':');
+                    if (parts.length !== 3 || tparts.length !== 2) {
+                      setInviteError('Data/hora inválidas');
+                      return;
+                    }
+                    const when = new Date(Date.UTC(parseInt(parts[0],10), parseInt(parts[1],10)-1, parseInt(parts[2],10), parseInt(tparts[0],10), parseInt(tparts[1],10)));
+                    if (when.getTime() <= Date.now()) {
+                      setInviteError('Escolha uma data/hora futura');
+                      return;
+                    }
+
+                    const toSend = {
+                      matchId,
+                      workoutType: inviteType,
+                      date: inviteDate,
+                      time: inviteTime,
+                      message: 'Que tal treinarmos juntos?',
+                      location: inviteLocation || undefined,
+                      gymId: inviteGymId,
+                    };
+                    if (!inviteGymId && inviteLocation) {
+                      const geo = await locationService.geocode(inviteLocation);
+                      if (geo) {
+                        toSend.latitude = geo.latitude;
+                        toSend.longitude = geo.longitude;
+                      }
+                    }
+                    await chatService.sendWorkoutInvite(toSend);
+                    setInviteModalVisible(false);
+                    loadMessages();
+                  } catch (e) {
+                    Alert.alert('Erro', 'Não foi possível enviar o convite');
+                  }
+                }} style={{ paddingVertical: 10, paddingHorizontal: 16, backgroundColor: colors.primary, borderRadius: 8 }}>
+                  <Text style={{ color: colors.white, fontFamily: 'Inter-Medium' }}>Enviar</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };

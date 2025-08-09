@@ -1,6 +1,7 @@
-import { IsString, IsOptional, IsEnum, IsUUID, IsObject, IsNumber, Min, Max } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsUUID, IsObject, IsNumber, Min, Max, IsLatitude, IsLongitude } from 'class-validator';
 import { Type } from 'class-transformer';
 import { MessageType } from '../entities/message.entity';
+import { WorkoutTypeEnum } from '../entities/workout-invite.entity';
 
 export class SendMessageDto {
   @IsUUID()
@@ -66,8 +67,8 @@ export class WorkoutInviteDto {
   @IsUUID()
   matchId: string;
 
-  @IsString()
-  workoutType: string;
+  @IsEnum(WorkoutTypeEnum)
+  workoutType: WorkoutTypeEnum;
 
   @IsString()
   date: string; // ISO date string
@@ -82,6 +83,18 @@ export class WorkoutInviteDto {
   @IsOptional()
   @IsString()
   message?: string;
+
+  @IsOptional()
+  @IsString()
+  gymId?: string;
+
+  @IsOptional()
+  @IsLatitude()
+  latitude?: number;
+
+  @IsOptional()
+  @IsLongitude()
+  longitude?: number;
 }
 
 export class LocationShareDto {

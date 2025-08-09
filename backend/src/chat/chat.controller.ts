@@ -8,7 +8,8 @@ import {
   Param, 
   Query, 
   UseGuards, 
-  Request 
+  Request, 
+  BadRequestException
 } from '@nestjs/common';
 import { ChatService } from './chat.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -37,6 +38,20 @@ export class ChatController {
     @Query() filters: MessageFiltersDto
   ) {
     return this.chatService.getMatchMessages(req.user.id, matchId, filters);
+  }
+
+  @Get('matches/:matchId/invites')
+  async getMatchInvites(@Request() req, @Param('matchId') matchId: string) {
+    return this.chatService.getMatchInvites(req.user.id, matchId);
+  }
+
+  // Sugestões de academias próximas ao ponto médio do par
+  @Get('matches/:matchId/gyms/nearby')
+  async getNearbyGyms(@Request() req, @Param('matchId') matchId: string, @Query('radius') radius: string = '5000', @Query('limit') limit: string = '5') {
+    const r = parseInt(radius, 10) || 5000;
+    const l = parseInt(limit, 10) || 5;
+    if (r <= 0 || l <= 0) throw new BadRequestException('Invalid radius or limit');
+    return this.chatService.getNearbyGymsForMatch(req.user.id, matchId, r, l);
   }
 
   @Put('messages/:messageId/read')
@@ -68,6 +83,21 @@ export class ChatController {
   @Post('workout-invite')
   async sendWorkoutInvite(@Request() req, @Body() inviteDto: WorkoutInviteDto) {
     return this.chatService.sendWorkoutInvite(req.user.id, inviteDto);
+  }
+
+  @Put('workout-invite/:id/accept')
+  async acceptInvite(@Request() req, @Param('id') id: string) {
+    return this.chatService.updateWorkoutInviteStatus(req.user.id, id, 'accepted');
+  }
+
+  @Put('workout-invite/:id/reject')
+  async rejectInvite(@Request() req, @Param('id') id: string) {
+    return this.chatService.updateWorkoutInviteStatus(req.user.id, id, 'rejected');
+  }
+
+  @Put('workout-invite/:id/cancel')
+  async cancelInvite(@Request() req, @Param('id') id: string) {
+    return this.chatService.updateWorkoutInviteStatus(req.user.id, id, 'canceled');
   }
 
   @Post('share-location')

@@ -6,4 +6,5 @@ export { RefreshToken } from './refresh-token.entity';
 export { Notification, NotificationType, NotificationStatus } from './notification.entity';
 export { PushToken, DeviceType } from './push-token.entity';
 export { Message, MessageType, MessageStatus } from './message.entity';
+export { WorkoutInvite, WorkoutInviteStatus, WorkoutTypeEnum } from './workout-invite.entity';
 

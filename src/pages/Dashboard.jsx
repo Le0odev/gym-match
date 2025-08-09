@@ -420,11 +420,19 @@ const Dashboard = ({ navigation }) => {
           onPress={() => navigation.navigate('Profile')}
           activeOpacity={0.8}
         >
-          <Ionicons
-            name="person"
-            size={20}
-            color={colors.white}
-          />
+          {user?.profilePicture ? (
+            <Image
+              source={{ uri: user.profilePicture }}
+              style={{ width: 40, height: 40, borderRadius: 20 }}
+              resizeMode="cover"
+            />
+          ) : (
+            <Ionicons
+              name="person"
+              size={20}
+              color={colors.white}
+            />
+          )}
         </TouchableOpacity>
       </View>
 
@@ -540,48 +548,41 @@ const Dashboard = ({ navigation }) => {
                 <TouchableOpacity
                   key={match.id || index}
                   style={{
-                    width: 120,
+                    width: 110,
                     marginRight: 16,
-                    backgroundColor: colors.white,
-                    borderRadius: 12,
-                    padding: 12,
                     alignItems: 'center',
-                    shadowColor: colors.black,
-                    shadowOffset: { width: 0, height: 2 },
-                    shadowOpacity: 0.05,
-                    shadowRadius: 8,
-                    elevation: 3,
                   }}
                   onPress={() => navigation.navigate('Chat', { matchId: match.id })}
                   activeOpacity={0.8}
                 >
                   <View style={{
-                    width: 60,
-                    height: 60,
-                    borderRadius: 30,
-                    backgroundColor: colors.gray[100],
-                    marginBottom: 8,
-                    overflow: 'hidden',
+                    width: 76,
+                    height: 76,
+                    borderRadius: 38,
+                    borderWidth: 2,
+                    borderColor: colors.primary,
+                    backgroundColor: colors.primary + '15',
+                    padding: 3,
+                    marginBottom: 10,
                   }}>
-                    {match.user?.profilePicture ? (
-                      <Image
-                        source={{ uri: match.user.profilePicture }}
-                        style={{ width: '100%', height: '100%' }}
-                        resizeMode="cover"
-                      />
-                    ) : (
-                      <View style={{
-                        flex: 1,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}>
-                        <Ionicons
-                          name="person"
-                          size={24}
-                          color={colors.gray[400]}
+                    <View style={{
+                      flex: 1,
+                      borderRadius: 35,
+                      overflow: 'hidden',
+                      backgroundColor: colors.gray[100],
+                    }}>
+                      {match.user?.profilePicture ? (
+                        <Image
+                          source={{ uri: match.user.profilePicture }}
+                          style={{ width: '100%', height: '100%' }}
+                          resizeMode="cover"
                         />
-                      </View>
-                    )}
+                      ) : (
+                        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                          <Ionicons name="person" size={26} color={colors.gray[400]} />
+                        </View>
+                      )}
+                    </View>
                   </View>
                   <Text style={{
                     fontFamily: 'Inter-Medium',

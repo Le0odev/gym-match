@@ -107,6 +107,46 @@ export const chatService = {
     }
   },
 
+  async acceptWorkoutInvite(inviteId) {
+    try {
+      const response = await api.put(`/chat/workout-invite/${inviteId}/accept`);
+      return response.data;
+    } catch (error) {
+      console.error('Error accepting workout invite:', error);
+      throw error;
+    }
+  },
+
+  async rejectWorkoutInvite(inviteId) {
+    try {
+      const response = await api.put(`/chat/workout-invite/${inviteId}/reject`);
+      return response.data;
+    } catch (error) {
+      console.error('Error rejecting workout invite:', error);
+      throw error;
+    }
+  },
+
+  async cancelWorkoutInvite(inviteId) {
+    try {
+      const response = await api.put(`/chat/workout-invite/${inviteId}/cancel`);
+      return response.data;
+    } catch (error) {
+      console.error('Error canceling workout invite:', error);
+      throw error;
+    }
+  },
+
+  async getNearbyGyms(matchId, { radius = 5000, limit = 5 } = {}) {
+    try {
+      const response = await api.get(`/chat/matches/${matchId}/gyms/nearby?radius=${radius}&limit=${limit}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error getting nearby gyms:', error);
+      return { gyms: [], total: 0 };
+    }
+  },
+
   async shareLocation(locationData) {
     try {
       const response = await api.post('/chat/share-location', locationData);

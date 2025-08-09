@@ -11,7 +11,8 @@ import {
   RefreshToken, 
   Notification, 
   PushToken, 
-  Message 
+  Message,
+  WorkoutInvite,
 } from './entities';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
@@ -45,7 +46,8 @@ import { GatewayModule } from './gateway/gateway.module';
           RefreshToken, 
           Notification, 
           PushToken, 
-          Message
+          Message,
+          WorkoutInvite,
         ],
         synchronize: configService.get('NODE_ENV') === 'development',
         logging: configService.get('NODE_ENV') === 'development',
