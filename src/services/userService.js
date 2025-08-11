@@ -23,6 +23,15 @@ const buildQuery = (obj = {}, allowedKeys = []) => {
 };
 
 export const userService = {
+  // expõe id corrente se contexto já gerencia
+  get currentUserId() {
+    try {
+      // opcional: se houver um AuthContext global, poderíamos buscar de outro lugar
+      return undefined;
+    } catch {
+      return undefined;
+    }
+  },
   // Perfil do usuário
   async getProfile() {
     try {
@@ -129,6 +138,17 @@ export const userService = {
     }
   },
 
+  async updateLocation({ latitude, longitude, address, placeName, city, state } = {}) {
+    try {
+      const payload = { latitude, longitude, address, placeName, city, state };
+      const response = await api.put('/users/me/location', payload);
+      return response.data;
+    } catch (error) {
+      logAxiosError('Error updating user location', error);
+      throw error;
+    }
+  },
+
   // Preferências de treino
   async getWorkoutPreferences() {
     try {
@@ -216,6 +236,28 @@ export const userService = {
       return data?.users ?? data;
     } catch (error) {
       logAxiosError('Error getting nearby users', error);
+      throw error;
+    }
+  },
+
+  // Treinos
+  async getUpcomingWorkouts(limit = 10) {
+    try {
+      // Fallback 1: notifications (lembretes de treino)
+      const response = await api
+        .get(`/notifications?type=WORKOUT_REMINDER&limit=${limit}`)
+        .catch(() => ({ data: { notifications: [] } }));
+      const raw = response.data?.notifications || response.data || [];
+      const fromNotifications = raw.map((n) => ({
+        id: n.id,
+        title: n.title || 'Treino agendado',
+        scheduledAt: n.createdAt || n.date,
+        partner: n.data?.partner || null,
+        location: n.data?.location || null,
+      }));
+      return fromNotifications;
+    } catch (error) {
+      logAxiosError('Error getting upcoming workouts', error);
       throw error;
     }
   },

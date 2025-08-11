@@ -1992,6 +1992,11 @@
   resolved "https://registry.yarnpkg.com/@socket.io/component-emitter/-/component-emitter-3.1.2.tgz#821f8442f4175d8f0467b9daf26e3a18e2d02af2"
   integrity sha512-9BCxFwvbGg/RsZK9tjXd8s4UcwR0MWeFQ1XEKIQVVvAGJyINdrqKMcTRyLoK8Rse1GjzLV9cwjWV1olXRWEXVA==
 
+"@types/geojson@^7946.0.13":
+  version "7946.0.16"
+  resolved "https://registry.yarnpkg.com/@types/geojson/-/geojson-7946.0.16.tgz#8ebe53d69efada7044454e3305c19017d97ced2a"
+  integrity sha512-6C8nqWur3j98U6+lXDfTUWIfgvZU+EumvpHKcYjujKH7woYyLj2sUmff0tRhrqM7BohUw7Pz3ZB1jj2gW9Fvmg==
+
 "@types/hammerjs@^2.0.36":
   version "2.0.46"
   resolved "https://registry.npmjs.org/@types/hammerjs/-/hammerjs-2.0.46.tgz"
@@ -6302,6 +6307,13 @@ react-native-gesture-handler@~2.12.0:
     invariant "^2.2.4"
     lodash "^4.17.21"
     prop-types "^15.7.2"
+
+react-native-maps@^1.25.0:
+  version "1.25.0"
+  resolved "https://registry.yarnpkg.com/react-native-maps/-/react-native-maps-1.25.0.tgz#21be7312f6f17e8d1f5105ad90c87c1e46eb7234"
+  integrity sha512-VIOc2gAbRcr+ZArAX7mnY6TF1ouGMSDTDHF85Ibs8nf0BYoOfnwM6lTqNxmPHLRv4gDFTkJ4lUENp/A6iMHc0g==
+  dependencies:
+    "@types/geojson" "^7946.0.13"
 
 react-native-reanimated@~3.3.0:
   version "3.3.0"

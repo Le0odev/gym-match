@@ -1,4 +1,5 @@
 import api from './api';
+import { userService } from './userService';
 
 export const chatService = {
   // Mensagens
@@ -97,6 +98,16 @@ export const chatService = {
   },
 
   // Funcionalidades especiais
+  async getMatchInvites(matchId) {
+    try {
+      const response = await api.get(`/chat/matches/${matchId}/invites`);
+      return response.data;
+    } catch (error) {
+      // Fallback silencioso: backend pode não suportar esse endpoint em todas as versões
+      return { invites: [], total: 0 };
+    }
+  },
+
   async sendWorkoutInvite(inviteData) {
     try {
       const response = await api.post('/chat/workout-invite', inviteData);
@@ -137,6 +148,17 @@ export const chatService = {
     }
   },
 
+  // Marca um convite como concluído (mútuo)
+  async completeWorkoutInvite(inviteId) {
+    try {
+      const response = await api.put(`/chat/workout-invite/${inviteId}/complete`);
+      return response.data;
+    } catch (error) {
+      // Se ainda não estiver no backend em alguns ambientes, propaga para fallback do caller decidir
+      throw error;
+    }
+  },
+
   async getNearbyGyms(matchId, { radius = 5000, limit = 5 } = {}) {
     try {
       const response = await api.get(`/chat/matches/${matchId}/gyms/nearby?radius=${radius}&limit=${limit}`);
@@ -165,6 +187,60 @@ export const chatService = {
     } catch (error) {
       console.error('Error searching messages:', error);
       throw error;
+    }
+  },
+
+  // Agregador: retorna convites aceitos como "próximos treinos"
+  async getAcceptedWorkoutInvites({ matchesLimit = 20 } = {}) {
+    try {
+      const matches = await userService.getMatches({ limit: matchesLimit }).catch(() => []);
+      const now = new Date();
+      const items = [];
+      for (const match of (matches || [])) {
+        const matchId = match.id || match.matchId || match?.id;
+        if (!matchId) continue;
+        // Ler invites diretos e filtrar aceitos e futuros
+        const invitesResp = await chatService.getMatchInvites(matchId);
+        const invites = (invitesResp?.invites || [])
+          .filter((i) => i.status === 'accepted')
+          .filter((i) => i.date && i.time)
+          .map((i) => ({
+            id: i.id,
+            date: i.date,
+            time: i.time,
+            address: i.address,
+            latitude: i.latitude,
+            longitude: i.longitude,
+            inviterId: i.inviterId,
+            inviteeId: i.inviteeId,
+            status: i.status,
+          }));
+
+        for (const i of invites) {
+          if (!i.date || !i.time) continue;
+          const scheduledAt = new Date(`${i.date}T${i.time}:00`);
+          if (!scheduledAt || Number.isNaN(scheduledAt.getTime()) || scheduledAt < now) continue;
+          items.push({
+            id: i.id,
+            title: 'Treino agendado',
+            scheduledAt,
+            partner: { name: match?.user?.name || match?.otherUser?.name || 'Parceiro' },
+            location: i.address ? { name: i.address } : null,
+            latitude: typeof i.latitude === 'number' ? i.latitude : undefined,
+            longitude: typeof i.longitude === 'number' ? i.longitude : undefined,
+            workoutType: i.workoutType,
+            inviterId: i.inviterId,
+            inviteeId: i.inviteeId,
+            matchId: i.matchId || matchId,
+            status: i.status,
+          });
+        }
+      }
+      items.sort((a, b) => a.scheduledAt - b.scheduledAt);
+      return items;
+    } catch (error) {
+      console.error('Error aggregating accepted workout invites:', error);
+      return [];
     }
   },
 };

@@ -94,16 +94,6 @@ export class UsersController {
     return this.usersService.getWorkoutPreferences(req.user.id);
   }
 
-  // Novas funcionalidades para o app mobile
-  @Post('me/upload-photo')
-  @UseInterceptors(FileInterceptor('photo'))
-  async uploadPhoto(@Request() req, @UploadedFile() file: Express.Multer.File) {
-    if (!file) {
-      throw new BadRequestException('No file uploaded');
-    }
-    return this.usersService.uploadProfilePhoto(req.user.id, file);
-  }
-
   @Put('me/photo')
   async updatePhotoUrl(@Request() req, @Body() uploadPhotoDto: UploadPhotoDto) {
     return this.usersService.updateProfilePhotoUrl(req.user.id, uploadPhotoDto.photoUrl);

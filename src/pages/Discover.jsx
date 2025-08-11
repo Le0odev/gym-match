@@ -14,7 +14,9 @@ import Slider from '@react-native-community/slider';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
-import { UserCard, LoadingSpinner, CustomButton } from '../components';
+import { useLocation } from '../hooks/useLocation';
+import { UserCard, LoadingSpinner, CustomButton, InAppBanner } from '../components';
+import { getSocket } from '../services/api';
 import { colors } from '../styles/colors';
 import { userService } from '../services/userService';
 
@@ -34,8 +36,11 @@ const Discover = ({ navigation }) => {
   const [showFilters, setShowFilters] = useState(false);
   const [workoutPreferences, setWorkoutPreferences] = useState([]);
   const [loadingPreferences, setLoadingPreferences] = useState(false);
+  const [filtersApplied, setFiltersApplied] = useState(false);
   
   const { user } = useAuth();
+  const { requestPermission, getCurrentLocation, hasPermission } = useLocation();
+  const [banner, setBanner] = useState({ visible: false, payload: null });
   
   // Animation values
   const position = new Animated.ValueXY();
@@ -65,9 +70,94 @@ const Discover = ({ navigation }) => {
   });
 
   useEffect(() => {
-    loadUsers();
-    loadWorkoutPreferences();
-  }, []);
+    (async () => {
+      // reset ao trocar de conta
+      setUsers([]);
+      setCurrentIndex(0);
+      setNoMoreUsers(false);
+      try {
+        const granted = await requestPermission();
+        if (granted) {
+          const loc = await getCurrentLocation();
+          if (loc?.latitude && loc?.longitude) {
+            try {
+              await userService.updateLocation({
+                latitude: loc.latitude,
+                longitude: loc.longitude,
+                city: loc.address?.city,
+                state: loc.address?.region,
+              });
+            } catch (e) {
+              console.error('Error persisting location:', e?.message || e);
+            }
+          }
+        }
+      } catch {}
+      await loadWorkoutPreferences();
+      // pequena espera para garantir visibilidade do currentLocation no backend
+      await new Promise((r) => setTimeout(r, 150));
+      await loadUsers();
+    })();
+  }, [user?.id]);
+
+  // Realtime: banner de novo match também no Discover
+  useEffect(() => {
+    let cleanup;
+    (async () => {
+      const socket = await getSocket();
+      if (user?.id) socket.emit('register', user.id);
+      const onMatchNew = ({ matchId, user: sender }) => {
+        setBanner({
+          visible: true,
+          payload: {
+            icon: 'heart',
+            title: 'Novo match! 🎉',
+            description: sender?.name ? `Você e ${sender.name} deram match!` : 'Você tem um novo match.',
+            matchId,
+          },
+        });
+      };
+      const onMatchUpdate = ({ matchId, status }) => {
+        if (status === 'ACCEPTED' || status === 'accepted') {
+          setBanner({
+            visible: true,
+            payload: {
+              icon: 'chatbubbles',
+              title: 'Match confirmado! 🎉',
+              description: 'Agora vocês podem conversar.',
+              matchId,
+            },
+          });
+        }
+      };
+      socket.on('match:new', onMatchNew);
+      socket.on('match:update', onMatchUpdate);
+      cleanup = () => {
+        socket.off('match:new', onMatchNew);
+        socket.off('match:update', onMatchUpdate);
+      };
+    })();
+    return () => cleanup && cleanup();
+  }, [user?.id]);
+
+  const renderPermissionBanner = () => {
+    if (hasPermission) return null;
+    return (
+      <View style={{ backgroundColor: '#FFF7ED', borderColor: '#FDBA74', borderWidth: 1, padding: 12, borderRadius: 12, marginBottom: 12 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Ionicons name="location" size={18} color="#EA580C" style={{ marginRight: 8 }} />
+          <Text style={{ color: '#9A3412', fontFamily: 'Inter-Medium' }}>
+            Ative a localização para ver perfis próximos.
+          </Text>
+        </View>
+        <View style={{ flexDirection: 'row', marginTop: 8 }}>
+          <TouchableOpacity onPress={requestPermission} style={{ paddingVertical: 8, paddingHorizontal: 12, backgroundColor: '#EA580C', borderRadius: 10 }}>
+            <Text style={{ color: 'white' }}>Ativar localização</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
 
   const loadWorkoutPreferences = async () => {
     try {
@@ -83,69 +173,50 @@ const Discover = ({ navigation }) => {
   };
 
   const loadUsers = async () => {
-    try {
-      setLoading(true);
-      
-      // Usar filtros para descobrir usuários com API real
-      const discoveredUsers = await userService.discoverUsers({
+      try {
+        setLoading(true);
+
+      // Monta params: por padrão somente distância. Filtros só quando aplicados.
+      const params = {
         distance: filters.distance,
-        minAge: filters.ageRange[0],
-        maxAge: filters.ageRange[1],
-        workoutPreferences: filters.workoutPreferences,
-        experienceLevel: filters.experienceLevel,
         limit: 10,
         offset: 0,
-      });
-      
+      };
+      if (filtersApplied) {
+        Object.assign(params, {
+          minAge: filters.ageRange[0],
+          maxAge: filters.ageRange[1],
+          workoutPreferences: filters.workoutPreferences,
+          experienceLevel: filters.experienceLevel,
+        });
+      }
+
+      const discoveredUsers = await Promise.race([
+        userService.discoverUsers(params),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout: discover')), 10000)),
+      ]);
+
       if (discoveredUsers && discoveredUsers.length > 0) {
-        // Calcular compatibilidade para cada usuário
-        const usersWithCompatibility = await Promise.all(
-          discoveredUsers.map(async (discoveredUser) => {
-            try {
-              const compatibility = await userService.getCompatibilityScore(discoveredUser.id);
-              return {
-                ...discoveredUser,
-                compatibilityScore: compatibility.score || 0,
-              };
-            } catch (error) {
-              console.error('Error getting compatibility:', error);
-              return {
-                ...discoveredUser,
-                compatibilityScore: Math.floor(Math.random() * 40) + 60, // Fallback 60-100%
-              };
-            }
-          })
-        );
-        
-        setUsers(usersWithCompatibility);
+        // Usar compatibilidade e distância já retornadas pelo backend quando disponíveis
+        const usersNormalized = discoveredUsers.map((u) => ({
+          ...u,
+          compatibilityScore: typeof u.compatibilityScore === 'number' ? u.compatibilityScore : 0,
+          distanceKm: u.distanceKm,
+        }));
+
+        setUsers(usersNormalized);
         setCurrentIndex(0);
         setNoMoreUsers(false);
       } else {
         setNoMoreUsers(true);
         setUsers([]);
       }
-    } catch (error) {
+      } catch (error) {
       console.error('Error loading users:', error);
       
-      // Em caso de erro, tentar carregar sugestões
-      try {
-        const suggestions = await userService.getSuggestions(10);
-        if (suggestions && suggestions.length > 0) {
-          setUsers(suggestions.map(user => ({
-            ...user,
-            compatibilityScore: Math.floor(Math.random() * 40) + 60,
-          })));
-          setCurrentIndex(0);
-          setNoMoreUsers(false);
-        } else {
-          setNoMoreUsers(true);
-          setUsers([]);
-        }
-      } catch (suggestionError) {
-        console.error('Error loading suggestions:', suggestionError);
+        // Em caso de erro, não retornar todos aleatórios; manter vazio para UX correta
         setNoMoreUsers(true);
         setUsers([]);
-      }
     } finally {
       setLoading(false);
     }
@@ -153,6 +224,7 @@ const Discover = ({ navigation }) => {
 
   const applyFilters = async () => {
     setShowFilters(false);
+    setFiltersApplied(true);
     await loadUsers();
   };
 
@@ -212,18 +284,19 @@ const Discover = ({ navigation }) => {
   const handleLike = async (targetUser) => {
     try {
       const result = await userService.likeUser(targetUser.id);
-      
-      if (result.isMatch) {
+      const isMatch = result?.matchStatus === 'accepted' || result?.isMatch === true;
+      if (isMatch) {
         Alert.alert(
           '🎉 É um Match!',
           `Você e ${targetUser.name} se curtiram mutuamente!`,
           [
             {
               text: 'Enviar Mensagem',
-              onPress: () => navigation.navigate('Chat', { 
-                matchId: result.matchId,
-                user: targetUser 
-              }),
+              onPress: () => {
+                const finalId = result?.matchId;
+                if (!finalId) return;
+                navigation.navigate('Matches', { screen: 'Chat', params: { matchId: finalId, matchData: { user: targetUser } } });
+              },
             },
             {
               text: 'Ver Matches',
@@ -265,7 +338,8 @@ const Discover = ({ navigation }) => {
         [{ text: 'OK' }]
       );
 
-      if (result.isMatch) {
+      const isMatch = result?.matchStatus === 'accepted' || result?.isMatch === true;
+      if (isMatch) {
         setTimeout(() => {
           Alert.alert(
             '🎉 É um Match!',
@@ -273,10 +347,7 @@ const Discover = ({ navigation }) => {
             [
               {
                 text: 'Enviar Mensagem',
-                onPress: () => navigation.navigate('Chat', { 
-                  matchId: result.matchId,
-                  user: targetUser 
-                }),
+                onPress: () => navigation.navigate('Matches', { screen: 'Chat', params: { matchId: result?.matchId, matchData: { user: targetUser } } }),
               },
               {
                 text: 'Ver Matches',
@@ -679,6 +750,29 @@ const Discover = ({ navigation }) => {
 
   return (
     <SafeAreaView style={getContainerStyle()}>
+      <InAppBanner
+        visible={banner.visible}
+        icon={banner.payload?.icon}
+        title={banner.payload?.title}
+        description={banner.payload?.description}
+        topOffset={68}
+        primaryAction={{
+          label: 'Abrir Chat',
+          onPress: () => {
+            const mid = banner.payload?.matchId;
+            setBanner({ visible: false, payload: null });
+            if (mid) navigation.navigate('Matches', { screen: 'Chat', params: { matchId: mid } });
+          },
+        }}
+        secondaryAction={{
+          label: 'Ver Matches',
+          onPress: () => {
+            setBanner({ visible: false, payload: null });
+            navigation.navigate('Matches');
+          },
+        }}
+        onClose={() => setBanner({ visible: false, payload: null })}
+      />
       {/* Header */}
       <View style={getHeaderStyle()}>
         <Text style={getHeaderTitleStyle()}>
@@ -697,9 +791,21 @@ const Discover = ({ navigation }) => {
         </TouchableOpacity>
       </View>
 
+      {/* Banner de permissão de localização (quando negada) */}
+      <View style={{ paddingHorizontal: 20, marginTop: 10 }}>
+        {renderPermissionBanner && renderPermissionBanner()}
+      </View>
+
       {/* Cards */}
       <View style={getCardsContainerStyle()}>
-        {renderCards()}
+        {loading ? (
+          <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+            <LoadingSpinner visible text="Procurando parceiros..." />
+            <Text style={getLoadingTextStyle()}>Buscando perfis próximos…</Text>
+          </View>
+        ) : (
+          renderCards()
+        )}
       </View>
 
       {/* Actions */}

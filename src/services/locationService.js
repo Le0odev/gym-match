@@ -19,7 +19,7 @@ class LocationService {
           'Para encontrar parceiros de treino próximos, precisamos acessar sua localização. Você pode alterar isso nas configurações do app.',
           [
             { text: 'Agora não', style: 'cancel' },
-            { text: 'Configurações', onPress: () => Location.openAppSettingsAsync() }
+            { text: 'Configurações', onPress: () => this.openAppSettings() }
           ]
         );
         return false;
@@ -40,6 +40,19 @@ class LocationService {
     } catch (error) {
       console.error('Error checking location permission:', error);
       return false;
+    }
+  }
+
+  async openAppSettings() {
+    try {
+      if (Location.openAppSettings) {
+        // SDKs mais novos
+        await Location.openAppSettings();
+      } else if (Location.openAppSettingsAsync) {
+        await Location.openAppSettingsAsync();
+      }
+    } catch (e) {
+      console.error('Error opening app settings:', e);
     }
   }
 

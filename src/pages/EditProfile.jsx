@@ -24,6 +24,8 @@ import { useAuth } from '../contexts/AuthContext';
 const editProfileSchema = z.object({
   name: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres'),
   bio: z.string().max(500, 'Bio deve ter no máximo 500 caracteres').optional(),
+  goal: z.string().max(200, 'Objetivo deve ter no máximo 200 caracteres').optional(),
+  availableTime: z.string().max(100, 'Tempo disponível deve ter no máximo 100 caracteres').optional(),
   height: z.string().optional(),
   weight: z.string().optional(),
   location: z.string().optional(),
@@ -55,6 +57,8 @@ const EditProfile = ({ navigation, route }) => {
     defaultValues: {
       name: profile?.name || '',
       bio: profile?.bio || '',
+      goal: profile?.goal || '',
+      availableTime: profile?.availableTime || '',
       height: profile?.height?.toString() || '',
       weight: profile?.weight?.toString() || '',
       location: profile?.location || '',
@@ -155,8 +159,9 @@ const EditProfile = ({ navigation, route }) => {
 
       const photoFile = {
         uri: imageAsset.uri,
-        type: imageAsset.type || 'image/jpeg',
-        fileName: imageAsset.fileName || `profile-${Date.now()}.jpg`,
+        // Padroniza para o mesmo formato do fluxo de upload na tela Perfil
+        type: 'image/jpeg',
+        fileName: 'profile-photo.jpg',
       };
 
       const response = await userService.uploadPhoto(photoFile);
@@ -536,6 +541,42 @@ const EditProfile = ({ navigation, route }) => {
                     multiline
                     numberOfLines={4}
                     leftIcon="document-text-outline"
+                  />
+                )}
+              />
+            </View>
+
+            <View style={getInputContainerStyle()}>
+              <Controller
+                control={control}
+                name="goal"
+                render={({ field: { onChange, onBlur, value } }) => (
+                  <CustomInput
+                    label="Objetivo"
+                    placeholder="Ex.: Ganho de massa, emagrecimento..."
+                    value={value}
+                    onChangeText={onChange}
+                    onBlur={onBlur}
+                    error={errors.goal?.message}
+                    leftIcon="flag-outline"
+                  />
+                )}
+              />
+            </View>
+
+            <View style={getInputContainerStyle()}>
+              <Controller
+                control={control}
+                name="availableTime"
+                render={({ field: { onChange, onBlur, value } }) => (
+                  <CustomInput
+                    label="Tempo disponível"
+                    placeholder="Ex.: Manhãs, Noites, 3x por semana"
+                    value={value}
+                    onChangeText={onChange}
+                    onBlur={onBlur}
+                    error={errors.availableTime?.message}
+                    leftIcon="time-outline"
                   />
                 )}
               />

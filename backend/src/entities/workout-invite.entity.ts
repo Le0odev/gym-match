@@ -7,6 +7,7 @@ export enum WorkoutInviteStatus {
   ACCEPTED = 'accepted',
   REJECTED = 'rejected',
   CANCELED = 'canceled',
+  COMPLETED = 'completed',
 }
 
 export enum WorkoutTypeEnum {

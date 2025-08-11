@@ -11,10 +11,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
-import { LoadingSpinner } from '../components';
+import { LoadingSpinner, InAppBanner } from '../components';
 import { colors } from '../styles/colors';
 import { userService } from '../services/userService';
 import { notificationService } from '../services/notificationService';
+import { getSocket } from '../services/api';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -29,6 +30,7 @@ const Dashboard = ({ navigation }) => {
   const [recentMatches, setRecentMatches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [banner, setBanner] = useState({ visible: false, payload: null });
   
   const { user } = useAuth();
 
@@ -38,7 +40,42 @@ const Dashboard = ({ navigation }) => {
     const interval = setInterval(() => {
       loadDashboardData();
     }, 15000); // 15s
-    return () => clearInterval(interval);
+    let cleanup;
+    (async () => {
+      // Realtime: alerta quando chegar novo match/atualização
+      const socket = await getSocket();
+      const onMatchNew = ({ matchId, user: sender }) => {
+        setBanner({
+          visible: true,
+          payload: {
+            icon: 'heart',
+            title: 'Novo match! 🎉',
+            description: sender?.name ? `Você e ${sender.name} deram match!` : 'Você tem um novo match.',
+            matchId,
+          },
+        });
+      };
+      const onMatchUpdate = ({ matchId, status }) => {
+        if (status === 'ACCEPTED' || status === 'accepted') {
+          setBanner({
+            visible: true,
+            payload: {
+              icon: 'chatbubbles',
+              title: 'Match confirmado! 🎉',
+              description: 'Agora vocês podem conversar.',
+              matchId,
+            },
+          });
+        }
+      };
+      socket.on('match:new', onMatchNew);
+      socket.on('match:update', onMatchUpdate);
+      cleanup = () => {
+        socket.off('match:new', onMatchNew);
+        socket.off('match:update', onMatchUpdate);
+      };
+    })();
+    return () => { clearInterval(interval); cleanup && cleanup(); };
   }, []);
 
   const loadDashboardData = async () => {
@@ -405,6 +442,29 @@ const Dashboard = ({ navigation }) => {
 
   return (
     <SafeAreaView style={getContainerStyle()}>
+      <InAppBanner
+        visible={banner.visible}
+        icon={banner.payload?.icon}
+        title={banner.payload?.title}
+        description={banner.payload?.description}
+        topOffset={72}
+        primaryAction={{
+          label: 'Abrir Chat',
+          onPress: () => {
+            const mid = banner.payload?.matchId;
+            setBanner({ visible: false, payload: null });
+            if (mid) navigation.navigate('Matches', { screen: 'Chat', params: { matchId: mid } });
+          },
+        }}
+        secondaryAction={{
+          label: 'Ver Matches',
+          onPress: () => {
+            setBanner({ visible: false, payload: null });
+            navigation.navigate('Matches');
+          },
+        }}
+        onClose={() => setBanner({ visible: false, payload: null })}
+      />
       {/* Header */}
       <View style={getHeaderStyle()}>
         <View style={getGreetingStyle()}>
@@ -552,7 +612,18 @@ const Dashboard = ({ navigation }) => {
                     marginRight: 16,
                     alignItems: 'center',
                   }}
-                  onPress={() => navigation.navigate('Chat', { matchId: match.id })}
+                  onPress={() => {
+                    const finalId = match?.id || match?.matchId || match?.match?.id || null;
+                    if (!finalId) {
+                      alert('Não foi possível abrir o chat deste match.');
+                      return;
+                    }
+                    // Chat está dentro do stack de Matches; navegar de forma aninhada
+                    navigation.navigate('Matches', {
+                      screen: 'Chat',
+                      params: { matchId: finalId, matchData: match },
+                    });
+                  }}
                   activeOpacity={0.8}
                 >
                   <View style={{

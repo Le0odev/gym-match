@@ -54,6 +54,27 @@ const UserCard = ({
     marginBottom: 12,
   });
 
+  const getNearYouChipStyle = () => ({
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#DCFCE7', // verde claro
+    borderColor: '#86EFAC',
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    marginTop: -6,
+    marginBottom: 8,
+  });
+
+  const getNearYouTextStyle = () => ({
+    fontFamily: 'Inter-Medium',
+    fontSize: 12,
+    color: '#166534',
+    marginLeft: 6,
+  });
+
   const getPreferencesContainerStyle = () => ({
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -194,6 +215,15 @@ const UserCard = ({
         <Text style={getAgeLocationStyle()}>
           {calculateAge(user.birthDate)} anos • {user.location || 'Localização não informada'}
         </Text>
+
+        {typeof user.distanceKm === 'number' && user.distanceKm < 2 && (
+          <View style={getNearYouChipStyle()}>
+            <Ionicons name="location" size={14} color="#166534" />
+            <Text style={getNearYouTextStyle()}>
+              Perto de você • {user.distanceKm} km
+            </Text>
+          </View>
+        )}
 
         {user.workoutPreferences && user.workoutPreferences.length > 0 && (
           <View style={getPreferencesContainerStyle()}>

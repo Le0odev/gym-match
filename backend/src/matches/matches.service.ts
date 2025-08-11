@@ -1,7 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { User, Match, MatchStatus } from '../entities';
+import { Repository, In } from 'typeorm';
+import { NotificationsService } from '../notifications/notifications.service';
+import { GatewayService } from '../gateway/gateway.service';
+import { User, Match, MatchStatus, Message } from '../entities';
 import { DiscoverUsersDto, MatchFiltersDto } from '../dto/match.dto';
 
 @Injectable()
@@ -11,6 +13,10 @@ export class MatchesService {
     private userRepository: Repository<User>,
     @InjectRepository(Match)
     private matchRepository: Repository<Match>,
+    @InjectRepository(Message)
+    private messageRepository: Repository<Message>,
+    private notificationsService: NotificationsService,
+    private gatewayService: GatewayService,
   ) {}
 
   async discoverUsers(userId: string, filters: DiscoverUsersDto) {
@@ -23,82 +29,183 @@ export class MatchesService {
       throw new NotFoundException('User not found');
     }
 
-    // Build query to find compatible users
+    // Coordenadas do usuário corrente para filtros geoespaciais (evita SRID 0)
+    let currentLon: number | null = null;
+    let currentLat: number | null = null;
+    if (currentUser.currentLocation) {
+      const raw = await this.userRepository
+        .createQueryBuilder('u')
+        .select('ST_X(u.currentLocation)', 'lon')
+        .addSelect('ST_Y(u.currentLocation)', 'lat')
+        .where('u.id = :userId', { userId })
+        .getRawOne<{ lon: string; lat: string }>();
+      if (raw) {
+        currentLon = Number(raw.lon);
+        currentLat = Number(raw.lat);
+      }
+    }
+
+    // Excluir usuários com relacionamento já decidido (accepted/rejected/unmatched)
+    const decidedStatuses = [
+      MatchStatus.ACCEPTED,
+      MatchStatus.REJECTED,
+      MatchStatus.UNMATCHED,
+    ];
+
+    const decidedMatches = await this.matchRepository.find({
+      where: [
+        { userAId: userId, status: In(decidedStatuses) },
+        { userBId: userId, status: In(decidedStatuses) },
+      ],
+    });
+
+    const pendingILiked = await this.matchRepository.find({
+      where: { userAId: userId, status: MatchStatus.PENDING },
+    });
+
+    const excludedUserIdsBase = [
+      ...decidedMatches.map((match) =>
+        match.userAId === userId ? match.userBId : match.userAId
+      ),
+      ...pendingILiked.map((match) => match.userBId),
+    ];
+
+    const incomingPending = await this.matchRepository.find({
+      where: { userBId: userId, status: MatchStatus.PENDING },
+      select: ['userAId'],
+    });
+    const incomingIdsRaw = incomingPending.map((m) => m.userAId);
+    const uniqueExcludedBase = Array.from(new Set(excludedUserIdsBase));
+    const incomingIds = incomingIdsRaw.filter((id) => !uniqueExcludedBase.includes(id));
+
+    // Carregar usuários que deram like em você (incoming), sem geofiltro
+    let incomingUsers: User[] = [];
+    if (incomingIds.length > 0) {
+      incomingUsers = await this.userRepository
+        .createQueryBuilder('user')
+        .select([
+          'user.id',
+          'user.email',
+          'user.name',
+          'user.height',
+          'user.weight',
+          'user.goal',
+          'user.availableTime',
+          'user.gymId',
+          'user.profilePicture',
+          'user.bio',
+          'user.birthDate',
+          'user.experienceLevel',
+          'user.gender',
+          'user.location',
+          'user.notificationsEnabled',
+          'user.darkMode',
+          'user.showOnline',
+          'user.lastSeen',
+          'user.totalMatches',
+          'user.completedWorkouts',
+          'user.profileViews',
+          'user.createdAt',
+          'user.updatedAt',
+        ])
+        .leftJoinAndSelect('user.workoutPreferences', 'workoutPreferences')
+        .leftJoinAndSelect('user.gym', 'gym')
+        .where('user.id IN (:...incomingIds)', { incomingIds })
+        .andWhere('user.id != :userId', { userId })
+        .getMany();
+    }
+
+    // Build query base: proximidade + joins essenciais
     let query = this.userRepository
       .createQueryBuilder('user')
+      .distinctOn(['user.id'])
+      .select([
+        'user.id',
+        'user.email',
+        'user.name',
+        'user.height',
+        'user.weight',
+        'user.goal',
+        'user.availableTime',
+        'user.gymId',
+        'user.profilePicture',
+        'user.bio',
+        'user.birthDate',
+        'user.experienceLevel',
+        'user.gender',
+        'user.location',
+        'user.notificationsEnabled',
+        'user.darkMode',
+        'user.showOnline',
+        'user.lastSeen',
+        'user.totalMatches',
+        'user.completedWorkouts',
+        'user.profileViews',
+        'user.createdAt',
+        'user.updatedAt',
+      ])
       .leftJoinAndSelect('user.workoutPreferences', 'workoutPreferences')
       .leftJoinAndSelect('user.gym', 'gym')
       .where('user.id != :userId', { userId });
 
-    // Filter by location if user has location
-    if (currentUser.currentLocation && filters.distance) {
-      query = query.andWhere(
-        `ST_DWithin(user.currentLocation, :userLocation, :distance)`,
-        {
-          userLocation: currentUser.currentLocation,
-          distance: filters.distance * 1000, // Convert km to meters
-        }
-      );
+    const effectiveDistanceKm = (filters.distance as number) || 25;
+    const excludedForQuery = Array.from(new Set([...uniqueExcludedBase, ...incomingIds]));
+    let useGeoQuery = currentLon != null && currentLat != null;
+
+    if (useGeoQuery) {
+      query = query
+        .andWhere('"user"."currentLocation" IS NOT NULL')
+        .andWhere(
+          `ST_DWithin("user"."currentLocation"::geography, ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography, :distance)`,
+          { lon: currentLon, lat: currentLat, distance: effectiveDistanceKm * 1000 },
+        )
+        .addSelect(
+          `ST_Distance("user"."currentLocation"::geography, ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography)`,
+          'distance_m',
+        );
     }
 
-    // Filter by workout types (multiple)
-    if (filters.workoutTypes && filters.workoutTypes.length > 0) {
-      query = query.andWhere('workoutPreferences.id IN (:...workoutTypes)', {
-        workoutTypes: filters.workoutTypes,
-      });
-    } else if (filters.workoutType) {
-      query = query.andWhere('workoutPreferences.id = :workoutType', {
-        workoutType: filters.workoutType,
-      });
-    }
+    // Nenhuma priorização especial: UX simples por distância
 
     // Filter by height range
+    // Aplicar filtros SOMENTE quando fornecidos
+    if (filters.workoutTypes && filters.workoutTypes.length > 0) {
+      query = query.andWhere('workoutPreferences.id IN (:...workoutTypes)', { workoutTypes: filters.workoutTypes });
+    } else if (filters.workoutType) {
+      query = query.andWhere('workoutPreferences.id = :workoutType', { workoutType: filters.workoutType });
+    }
     if (filters.minHeight) {
-      query = query.andWhere('user.height >= :minHeight', {
-        minHeight: filters.minHeight,
-      });
+      query = query.andWhere('user.height >= :minHeight', { minHeight: filters.minHeight });
     }
     if (filters.maxHeight) {
-      query = query.andWhere('user.height <= :maxHeight', {
-        maxHeight: filters.maxHeight,
-      });
+      query = query.andWhere('user.height <= :maxHeight', { maxHeight: filters.maxHeight });
     }
 
     // Filter by weight range
     if (filters.minWeight) {
-      query = query.andWhere('user.weight >= :minWeight', {
-        minWeight: filters.minWeight,
-      });
+      query = query.andWhere('user.weight >= :minWeight', { minWeight: filters.minWeight });
     }
     if (filters.maxWeight) {
-      query = query.andWhere('user.weight <= :maxWeight', {
-        maxWeight: filters.maxWeight,
-      });
+      query = query.andWhere('user.weight <= :maxWeight', { maxWeight: filters.maxWeight });
     }
 
     // Filter by experience level
     if (filters.experienceLevel) {
-      query = query.andWhere('user.experienceLevel = :experienceLevel', {
-        experienceLevel: filters.experienceLevel,
-      });
+      query = query.andWhere('user.experienceLevel = :experienceLevel', { experienceLevel: filters.experienceLevel });
     }
 
     // Filter by gender
     if (filters.gender) {
-      query = query.andWhere('user.gender = :gender', {
-        gender: filters.gender,
-      });
+      query = query.andWhere('user.gender = :gender', { gender: filters.gender });
     }
 
     // Filter by age range
     if (filters.minAge || filters.maxAge) {
       const currentDate = new Date();
-      
       if (filters.maxAge) {
         const minBirthDate = new Date(currentDate.getFullYear() - filters.maxAge, 0, 1);
         query = query.andWhere('user.birthDate >= :minBirthDate', { minBirthDate });
       }
-      
       if (filters.minAge) {
         const maxBirthDate = new Date(currentDate.getFullYear() - filters.minAge, 11, 31);
         query = query.andWhere('user.birthDate <= :maxBirthDate', { maxBirthDate });
@@ -107,22 +214,16 @@ export class MatchesService {
 
     // Filter by city/state
     if (filters.city) {
-      query = query.andWhere('user.location ILIKE :city', {
-        city: `%${filters.city}%`,
-      });
+      query = query.andWhere('user.location ILIKE :city', { city: `%${filters.city}%` });
     }
 
     if (filters.state) {
-      query = query.andWhere('user.location ILIKE :state', {
-        state: `%${filters.state}%`,
-      });
+      query = query.andWhere('user.location ILIKE :state', { state: `%${filters.state}%` });
     }
 
     // Filter by gym
     if (filters.gymId) {
-      query = query.andWhere('user.gymId = :gymId', {
-        gymId: filters.gymId,
-      });
+      query = query.andWhere('user.gymId = :gymId', { gymId: filters.gymId });
     }
 
     // Filter by online status
@@ -131,41 +232,78 @@ export class MatchesService {
       query = query.andWhere('user.lastSeen >= :fiveMinutesAgo', { fiveMinutesAgo });
     }
 
-    // Exclude users already matched or skipped
-    const existingMatches = await this.matchRepository.find({
-      where: [
-        { userAId: userId },
-        { userBId: userId },
-      ],
-    });
-
-    const excludedUserIds = existingMatches.map(match => 
-      match.userAId === userId ? match.userBId : match.userAId
-    );
-
-    if (excludedUserIds.length > 0) {
-      query = query.andWhere('user.id NOT IN (:...excludedUserIds)', {
-        excludedUserIds,
-      });
+    if (excludedForQuery.length > 0) {
+      query = query.andWhere('user.id NOT IN (:...excludedUserIds)', { excludedUserIds: excludedForQuery });
     }
 
-    // Apply pagination
-    query = query
+    // DISTINCT ON requer que o(s) campo(s) do DISTINCT seja(m) o(s) primeiro(s) do ORDER BY
+    query = query.orderBy('user.id', 'ASC')
+      .addOrderBy('distance_m', 'ASC', 'NULLS LAST')
       .skip(filters.offset || 0)
       .take(filters.limit || 20);
 
-    const users = await query.getMany();
+    let users: User[] = [];
+    let raw: any[] = [];
+    if (useGeoQuery) {
+      const result = await query
+        .orderBy('user.id', 'ASC')
+        .addOrderBy('distance_m', 'ASC', 'NULLS LAST')
+        .skip(filters.offset || 0)
+        .take(filters.limit || 20)
+        .getRawAndEntities();
+      users = result.entities;
+      raw = result.raw as any[];
+    }
 
-    // Calculate compatibility score for each user
-    const usersWithCompatibility = users.map(user => ({
+    let geoUsers = users.map((u, idx) => {
+      const row = raw[idx] || {};
+      const distanceMeters = row.distance_m != null ? Number(row.distance_m) : NaN;
+      const distanceKm = Number.isFinite(distanceMeters) ? Math.round((distanceMeters / 1000) * 10) / 10 : undefined;
+      (u as any).__distanceKm = distanceKm;
+      return u;
+    });
+
+    const pendingIds = new Set(incomingIds);
+
+    // Calcular compatibilidade e distância aparente
+    // Merge incoming first
+    const combinedUsersOrder = [
+      ...incomingUsers,
+      ...geoUsers,
+    ];
+
+    // Fallback quando não há localização ou nenhum resultado: sugestões por preferência/gym
+    if (combinedUsersOrder.length === 0) {
+      const suggestions = await this.getSuggestions(userId, filters.limit || 20);
+      const suggestionsFiltered = suggestions.filter((u) => !uniqueExcludedBase.includes(u.id));
+      const mapped = suggestionsFiltered.map((u: any) => ({
+        ...u,
+        distanceKm: (u as any).__distanceKm,
+      }));
+      return {
+        users: mapped,
+        total: mapped.length,
+        hasMore: mapped.length === (filters.limit || 20),
+      };
+    }
+
+    let usersWithCompatibility = combinedUsersOrder.map(user => ({
       ...user,
       compatibilityScore: this.calculateCompatibilityScore(currentUser, user),
       age: this.calculateAge(user.birthDate),
-      distance: this.calculateDistance(currentUser, user),
+      distanceKm: (user as any).__distanceKm,
+      incomingLike: pendingIds.has(user.id),
     }));
 
-    // Sort by compatibility score
-    usersWithCompatibility.sort((a, b) => b.compatibilityScore - a.compatibilityScore);
+    // Reordena por distância asc (já foi calculado) e usa compatibilidade como desempate
+    usersWithCompatibility = usersWithCompatibility.sort((a, b) => {
+      if (a.incomingLike && !b.incomingLike) return -1;
+      if (!a.incomingLike && b.incomingLike) return 1;
+      const da = typeof a.distanceKm === 'number' ? a.distanceKm : Number.POSITIVE_INFINITY;
+      const db = typeof b.distanceKm === 'number' ? b.distanceKm : Number.POSITIVE_INFINITY;
+      if (da !== db) return da - db;
+      return (b.compatibilityScore || 0) - (a.compatibilityScore || 0);
+    });
 
     return {
       users: usersWithCompatibility,
@@ -188,13 +326,14 @@ export class MatchesService {
       .leftJoinAndSelect('user.workoutPreferences', 'workoutPreferences')
       .where('user.id != :userId', { userId })
       .andWhere(
-        `ST_DWithin(user.currentLocation, :userLocation, :distance)`,
+        `ST_DWithin("user"."currentLocation"::geography, :userLocation::geography, :distance)`,
         {
           userLocation: currentUser.currentLocation,
           distance: distance * 1000,
         }
       )
-      .orderBy(`ST_Distance(user.currentLocation, '${currentUser.currentLocation}')`)
+      .orderBy(`ST_Distance("user"."currentLocation"::geography, :orderLocation::geography)`)
+      .setParameters({ orderLocation: currentUser.currentLocation })
       .limit(20);
 
     const users = await query.getMany();
@@ -261,6 +400,20 @@ export class MatchesService {
   }
 
   async likeUser(userAId: string, userBId: string, message?: string) {
+    // Bloquear auto-match indevido quando não há localização persistida (ambos sem currentLocation)
+    const [userA, userB] = await Promise.all([
+      this.userRepository.findOne({ where: { id: userAId } }),
+      this.userRepository.findOne({ where: { id: userBId } }),
+    ]);
+    if (!userA || !userB) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Se nenhum dos dois tem localização, mantém pending (evita match incorreto em contas novas)
+    if (!userA.currentLocation && !userB.currentLocation) {
+      return { matchStatus: 'pending', matchId: null, isNewMatch: false };
+    }
+
     // Check if user B already liked user A
     const existingMatch = await this.matchRepository.findOne({
       where: {
@@ -272,6 +425,13 @@ export class MatchesService {
 
     if (existingMatch) {
       // It's a match! Update status to accepted
+      // Aceitar somente se ambos têm localização e estão próximos (ex.: 100km)
+      const canAutoAccept = await this.areUsersWithinDistanceKm(userAId, userBId, 100);
+      if (!canAutoAccept) {
+        // Mantém como pending e notifica o destinatário de que há um like (não é match)
+        this.gatewayService.emitToUser(userBId, 'match:new', { matchId: existingMatch.id, status: 'pending', fromUserId: userAId });
+        return { matchStatus: 'pending', matchId: existingMatch.id, isNewMatch: false };
+      }
       existingMatch.status = MatchStatus.ACCEPTED;
       if (message) {
         existingMatch.initialMessage = message;
@@ -281,6 +441,15 @@ export class MatchesService {
       // Update match count for both users
       await this.updateUserMatchCount(userAId);
       await this.updateUserMatchCount(userBId);
+
+      // Emitir evento realtime para ambos os usuários
+      this.gatewayService.emitToUser(userAId, 'match:update', { matchId: existingMatch.id, status: 'accepted' });
+      this.gatewayService.emitToUser(userBId, 'match:update', { matchId: existingMatch.id, status: 'accepted' });
+
+      // Notificar ambos (push/in-app)
+      try {
+        await this.notificationsService.notifyNewMatch(userAId, userBId, existingMatch.id);
+      } catch (_) {}
 
       return { matchStatus: 'accepted', matchId: existingMatch.id, isNewMatch: true };
     } else {
@@ -295,17 +464,41 @@ export class MatchesService {
       });
 
       await this.matchRepository.save(newMatch);
+
+      // Emite evento de like/pending para o destinatário (para UI opcional)
+      this.gatewayService.emitToUser(userBId, 'match:new', { matchId: newMatch.id, status: 'pending', fromUserId: userAId });
+
       return { matchStatus: 'pending', matchId: newMatch.id, isNewMatch: false };
     }
+  }
+
+  private async areUsersWithinDistanceKm(userAId: string, userBId: string, km: number): Promise<boolean> {
+    const rows = await this.userRepository
+      .createQueryBuilder('ua')
+      .select(
+        `ST_Distance("ua"."currentLocation"::geography, "ub"."currentLocation"::geography)`,
+        'dist_m',
+      )
+      .innerJoin(User, 'ub', 'ub.id = :userBId', { userBId })
+      .where('ua.id = :userAId', { userAId })
+      .andWhere('"ua"."currentLocation" IS NOT NULL')
+      .andWhere('"ub"."currentLocation" IS NOT NULL')
+      .getRawOne<{ dist_m: string }>();
+    if (!rows || rows.dist_m == null) return false;
+    const meters = Number(rows.dist_m);
+    if (Number.isNaN(meters)) return false;
+    return meters <= km * 1000;
   }
 
   async superLikeUser(userAId: string, userBId: string, message?: string) {
     const result = await this.likeUser(userAId, userBId, message);
     
     // Mark as super like for higher visibility
-    await this.matchRepository.update(result.matchId, {
-      isSuperLike: true,
-    });
+    if (result.matchId) {
+      await this.matchRepository.update(result.matchId, {
+        isSuperLike: true,
+      });
+    }
 
     return { ...result, isSuperLike: true };
   }
@@ -355,20 +548,50 @@ export class MatchesService {
 
     const matches = await query.getMany();
 
-    return {
-      matches: matches.map(match => ({
+    // Buscar última mensagem (enviada ou recebida) de todos os matches em uma consulta
+    const matchIds = matches.map((m) => m.id);
+    let lastMessagesByMatch = new Map<string, Message>();
+    if (matchIds.length > 0) {
+      const lastMessages = await this.messageRepository
+        .createQueryBuilder('message')
+        .distinctOn(['message.matchId'])
+        .where('message.matchId IN (:...matchIds)', { matchIds })
+        .orderBy('message.matchId', 'ASC')
+        .addOrderBy('message.createdAt', 'DESC')
+        .getMany();
+      lastMessages.forEach((msg) => lastMessagesByMatch.set(msg.matchId, msg));
+    }
+
+    const items = matches.map(match => {
+      const lastMsg = lastMessagesByMatch.get(match.id);
+      const otherUser = match.userAId === userId ? match.userB : match.userA;
+      return {
         matchId: match.id,
-        user: match.userAId === userId ? match.userB : match.userA,
+        user: otherUser,
         status: match.status,
         compatibilityScore: match.compatibilityScore,
         isSuperLike: match.isSuperLike,
         initialMessage: match.initialMessage,
         createdAt: match.createdAt,
-        lastMessageAt: match.lastMessageAt,
+        lastMessageAt: lastMsg?.createdAt ?? match.lastMessageAt,
+        lastMessage: lastMsg
+          ? {
+              id: lastMsg.id,
+              content: lastMsg.content,
+              type: lastMsg.type,
+              createdAt: lastMsg.createdAt,
+              senderId: lastMsg.senderId,
+              recipientId: lastMsg.recipientId,
+            }
+          : undefined,
         unreadCount: match.userAId === userId ? match.unreadCountA : match.unreadCountB,
-      })),
-      total: matches.length,
-      hasMore: matches.length === (filters.limit || 20),
+      };
+    });
+
+    return {
+      matches: items,
+      total: items.length,
+      hasMore: items.length === (filters.limit || 20),
     };
   }
 

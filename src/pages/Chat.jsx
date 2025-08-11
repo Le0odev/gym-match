@@ -32,7 +32,9 @@ const Chat = ({ navigation, route }) => {
   const [match, setMatch] = useState(null);
   const flatListRef = useRef(null);
   const { user } = useAuth();
-  const { matchId, matchData } = route.params || {};
+  const { matchId: matchIdParam, matchData } = route.params || {};
+  // Fallback: se matchId não veio nos params, tentar obter do objeto de match
+  const safeMatchId = matchIdParam || matchData?.id || matchData?.matchId;
   const didInitialScrollRef = useRef(false);
   const isNearBottomRef = useRef(true);
   const scrollScheduledRef = useRef(false);
@@ -58,6 +60,8 @@ const Chat = ({ navigation, route }) => {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const { location: currentLocation } = useLocation();
+
+  // Evitar acesso direto a variável inexistente: sempre usar safeMatchId
 
   // Lazy require DateTimePicker to avoid hard dependency if not installed
   let DateTimePicker = null;
@@ -106,7 +110,8 @@ const Chat = ({ navigation, route }) => {
     const map = {
       accepted: { text: 'Aceito', bg: '#22c55e33', fg: '#16a34a', icon: 'checkmark-circle' },
       rejected: { text: 'Recusado', bg: '#ef444433', fg: '#b91c1c', icon: 'close-circle' },
-      canceled: { text: 'Cancelado', bg: colors.gray[200], fg: colors.gray[700], icon: 'ban' },
+      canceled: { text: 'Cancelado', bg: colors.gray[200], fg: colors.gray[700], icon: 'close-circle' },
+      completed: { text: 'Concluído', bg: '#22c55e33', fg: '#16a34a', icon: 'checkmark-done' },
       pending:  { text: 'Pendente', bg: '#f59e0b33', fg: '#b45309', icon: 'time' },
     };
     return map[status] || map.pending;
@@ -157,14 +162,14 @@ const Chat = ({ navigation, route }) => {
       // registra user na sala
       if (user?.id) socket.emit('register', user.id);
       const handler = (msg) => {
-        if (msg.matchId === matchId) {
+        if (msg.matchId === safeMatchId) {
           setMessages((prev) => dedupeById([...prev, msg]));
           // Ao receber, garantir visibilidade da última mensagem
           scheduleScrollToEnd(true, 40);
         }
       };
       const onInviteNew = ({ invite, message }) => {
-        if (message?.matchId === matchId) {
+        if (message?.matchId === safeMatchId) {
           setMessages((prev) => dedupeById([...prev, message]));
           scheduleScrollToEnd(true, 40);
         }
@@ -196,26 +201,27 @@ const Chat = ({ navigation, route }) => {
       };
     })();
     return () => { clearTimeout(t); if (cleanup) cleanup(); };
-  }, [matchId]);
+  }, [safeMatchId]);
 
   // Load nearby gyms when opening invite modal
   useEffect(() => {
     const loadGyms = async () => {
-      if (!inviteModalVisible) return;
+      if (!inviteModalVisible || !safeMatchId) return;
       try {
-        const res = await chatService.getNearbyGyms(matchId, { radius: 5000, limit: 5 });
+        const res = await chatService.getNearbyGyms(safeMatchId, { radius: 5000, limit: 5 });
         setNearbyGyms(res.gyms || []);
       } catch (_) {
         setNearbyGyms([]);
       }
     };
     loadGyms();
-  }, [inviteModalVisible, matchId]);
+  }, [inviteModalVisible, safeMatchId]);
 
   const loadMessages = async () => {
     try {
       setLoading(true);
-      const messagesData = await chatService.getMatchMessages(matchId, {
+      if (!safeMatchId) return;
+      const messagesData = await chatService.getMatchMessages(safeMatchId, {
         limit: 50,
         offset: 0,
       });
@@ -235,9 +241,10 @@ const Chat = ({ navigation, route }) => {
 
   const markMessagesAsRead = async () => {
     try {
-      await chatService.markAllMessagesAsRead(matchId);
+      if (!safeMatchId) return;
+      await chatService.markAllMessagesAsRead(safeMatchId);
       // Notificar outras telas para atualizar contadores
-      eventBus.emit('match:read', { matchId });
+      eventBus.emit('match:read', { matchId: safeMatchId });
       // Limpar badge global (notificações) assim que usuário visualizar chat
       try {
         await notificationService.markAllAsRead();
@@ -256,12 +263,12 @@ const Chat = ({ navigation, route }) => {
       const tempId = `temp-${Date.now()}`;
       const optimisticMessage = {
         id: tempId,
-        matchId,
+        matchId: safeMatchId,
         senderId: user?.id,
         recipientId: null,
         content: newMessage.trim(),
         type: 'text',
-        createdAt: new Date().toISOString(),
+        createdAt: new Date(),
       };
       setMessages(prev => dedupeById([...prev, optimisticMessage]));
       setNewMessage('');
@@ -269,7 +276,7 @@ const Chat = ({ navigation, route }) => {
 
       // Envia ao backend
       const sentMessage = await chatService.sendMessage({
-        matchId,
+        matchId: safeMatchId,
         content: optimisticMessage.content,
         type: 'text',
       });
@@ -300,7 +307,7 @@ const Chat = ({ navigation, route }) => {
               const now = new Date();
               const pad = (n) => String(n).padStart(2, '0');
               const inviteData = {
-                matchId,
+                matchId: safeMatchId,
                 workoutType: 'Treino livre',
                 date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
                 time: `${pad(now.getHours())}:${pad(now.getMinutes())}`,
@@ -320,8 +327,19 @@ const Chat = ({ navigation, route }) => {
     );
   };
 
+  const parseServerDate = (ts) => {
+    try {
+      if (!ts) return new Date();
+      if (ts instanceof Date) return ts;
+      // Agora o backend envia ISO UTC (com Z) usando timestamptz
+      return new Date(ts);
+    } catch {
+      return new Date();
+    }
+  };
+
   const formatMessageTime = (timestamp) => {
-    const date = new Date(timestamp);
+    const date = parseServerDate(timestamp);
     const now = new Date();
     const diffInHours = (now - date) / (1000 * 60 * 60);
 
@@ -345,7 +363,7 @@ const Chat = ({ navigation, route }) => {
     
     return (
       <View style={getMessageContainerStyle(isMyMessage)}>
-        <View style={getMessageBubbleStyle(isMyMessage)}>
+        <View style={getMessageBubbleStyle(isMyMessage, isInvite)}>
           {isInvite ? (
             <View>
               <View style={[getWorkoutInviteStyle(), { justifyContent: 'space-between' }]}>
@@ -361,12 +379,12 @@ const Chat = ({ navigation, route }) => {
                   </View>
                 ); })() : null}
               </View>
-              <Text style={{ fontFamily: 'Inter-Regular', color: isMyMessage ? colors.white : colors.gray[800], marginTop: 6 }}>
+              <Text style={{ fontFamily: 'Inter-Regular', color: colors.gray[800], marginTop: 6 }}>
                 {meta.workoutType ? `${getWorkoutTypeLabel(meta.workoutType)}` : ''}
                 {meta.date && meta.time ? ` — ${formatInviteDateTime(meta.date, meta.time)}` : ''}
               </Text>
               {meta.address ? (
-                <Text style={{ fontFamily: 'Inter-Regular', color: isMyMessage ? colors.white : colors.gray[700], marginTop: 2 }}>
+                <Text style={{ fontFamily: 'Inter-Regular', color: colors.gray[700], marginTop: 2 }}>
                   Local: {meta.address}
                 </Text>
               ) : null}
@@ -384,8 +402,8 @@ const Chat = ({ navigation, route }) => {
                       } catch (e) {
                         Alert.alert('Erro', 'Não foi possível cancelar');
                       }
-                    }} style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12, backgroundColor: colors.white + '20', borderWidth: isMyMessage ? 0 : 1, borderColor: colors.gray[200] }}>
-                      <Text style={{ color: isMyMessage ? colors.white : colors.gray[800] }}>Cancelar</Text>
+                      }} style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12, backgroundColor: colors.gray[100], borderWidth: 0 }}>
+                      <Text style={{ color: colors.gray[800] }}>Cancelar</Text>
                     </TouchableOpacity>
                   ) : (
                     <>
@@ -409,7 +427,7 @@ const Chat = ({ navigation, route }) => {
                           Alert.alert('Erro', 'Não foi possível recusar');
                         }
                       }} style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.gray[300] }}>
-                        <Text style={{ color: isMyMessage ? colors.white : colors.gray[800] }}>Recusar</Text>
+                        <Text style={{ color: colors.gray[800] }}>Recusar</Text>
                       </TouchableOpacity>
                     </>
                   )}
@@ -530,14 +548,21 @@ const Chat = ({ navigation, route }) => {
     marginVertical: 4,
   });
 
-  const getMessageBubbleStyle = (isMyMessage) => ({
+  const getMessageBubbleStyle = (isMyMessage, isInvite = false) => ({
     maxWidth: '80%',
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 20,
-    backgroundColor: isMyMessage ? colors.primary : colors.white,
-    borderWidth: isMyMessage ? 0 : 1,
-    borderColor: colors.gray[200],
+    // Recebido: branco; Enviado texto: azul; Enviado convite: cor diferenciada
+    backgroundColor: isInvite
+      ? (isMyMessage ? '#E8F5FF' : colors.white)
+      : (isMyMessage ? colors.primary : colors.white),
+    borderWidth: isInvite
+      ? (isMyMessage ? 0 : 1)
+      : (isMyMessage ? 0 : 1),
+    borderColor: isInvite
+      ? (isMyMessage ? 'transparent' : colors.gray[200])
+      : (isMyMessage ? 'transparent' : colors.gray[200]),
   });
 
   const getMessageTextStyle = (isMyMessage) => ({
@@ -571,7 +596,7 @@ const Chat = ({ navigation, route }) => {
     fontFamily: 'Inter-Medium',
     fontSize: 16,
     lineHeight: 24,
-    color: colors.primary,
+    color: colors.gray[900],
   });
 
   const getInputContainerStyle = () => ({
@@ -848,7 +873,7 @@ const Chat = ({ navigation, route }) => {
                     }
 
                     const toSend = {
-                      matchId,
+                      matchId: safeMatchId,
                       workoutType: inviteType,
                       date: inviteDate,
                       time: inviteTime,

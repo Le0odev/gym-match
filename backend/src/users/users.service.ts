@@ -51,15 +51,24 @@ export class UsersService {
   async updateLocation(userId: string, updateLocationDto: UpdateLocationDto): Promise<User> {
     const user = await this.findById(userId);
 
-    // Create PostGIS Point from latitude and longitude
-    const point = `POINT(${updateLocationDto.longitude} ${updateLocationDto.latitude})`;
+    const lon = updateLocationDto.longitude;
+    const lat = updateLocationDto.latitude;
+    const wktPoint = `POINT(${lon} ${lat})`;
+    const friendly = updateLocationDto.city && updateLocationDto.state
+      ? `${updateLocationDto.city}, ${updateLocationDto.state}`
+      : user.location;
 
-    await this.userRepository.update(userId, {
-      currentLocation: point,
-      location: updateLocationDto.city && updateLocationDto.state 
-        ? `${updateLocationDto.city}, ${updateLocationDto.state}`
-        : user.location,
-    });
+    // Usar WKT + ST_GeomFromText para evitar erro de GeoJSON
+    await this.userRepository
+      .createQueryBuilder()
+      .update(User)
+      .set({
+        currentLocation: () => `ST_SetSRID(ST_GeomFromText(:wkt), 4326)` as any,
+        location: friendly,
+      })
+      .where('id = :userId', { userId })
+      .setParameters({ wkt: wktPoint })
+      .execute();
 
     return this.findById(userId);
   }

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
-import { Dashboard, Discover, Matches, Profile, EditProfile, Chat, WorkoutPreferences } from '../pages';
+import { Dashboard, Discover, Matches, Profile, EditProfile, Chat, WorkoutPreferences, Workout, WorkoutDetails } from '../pages';
 import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import { colors } from '../styles/colors';
 import { notificationService } from '../services/notificationService';
@@ -13,7 +13,6 @@ import { eventBus } from '../services/eventBus';
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
-// Stack Navigator para Profile (inclui EditProfile)
 const ProfileStack = () => {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -24,7 +23,6 @@ const ProfileStack = () => {
   );
 };
 
-// Stack Navigator para Matches (inclui Chat)
 const MatchesStack = () => {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -34,11 +32,19 @@ const MatchesStack = () => {
   );
 };
 
+const WorkoutStack = () => {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="WorkoutMain" component={Workout} />
+      <Stack.Screen name="WorkoutPreferences" component={WorkoutPreferences} />
+      <Stack.Screen name="WorkoutDetails" component={WorkoutDetails} />
+    </Stack.Navigator>
+  );
+};
 const MainNavigator = () => {
   const { user } = useAuth();
   const [unread, setUnread] = useState(0);
 
-  // Polling leve + socket para atualizar badge
   useEffect(() => {
     let interval;
     let cleanup;
@@ -77,6 +83,9 @@ const MainNavigator = () => {
       case 'Matches':
         iconName = focused ? 'heart' : 'heart-outline';
         break;
+      case 'Workout':
+        iconName = focused ? 'barbell' : 'barbell-outline'
+        break
       case 'Profile':
         iconName = focused ? 'person' : 'person-outline';
         break;
@@ -121,7 +130,7 @@ const MainNavigator = () => {
         component={Dashboard}
         options={{
           title: 'Início',
-          tabBarBadge: undefined, // Can be used for notifications
+          tabBarBadge: undefined, 
         }}
       />
       <Tab.Screen
@@ -168,6 +177,13 @@ const MainNavigator = () => {
               setUnread(0);
             } catch {}
           },
+        }}
+      />
+      <Tab.Screen
+        name='Workout'
+        component={WorkoutStack}
+        options={{
+          title: 'Treinos'
         }}
       />
       <Tab.Screen

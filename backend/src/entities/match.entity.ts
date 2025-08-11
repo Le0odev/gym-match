@@ -47,7 +47,7 @@ export class Match {
   compatibilityScore: number;
 
   // Campos relacionados ao chat
-  @Column({ name: 'last_message_at', type: 'timestamp', nullable: true })
+  @Column({ name: 'last_message_at', type: 'timestamptz', nullable: true })
   lastMessageAt: Date;
 
   @Column({ name: 'last_message_preview', type: 'text', nullable: true })
@@ -69,16 +69,16 @@ export class Match {
   skipReason: string;
 
   // Campos para unmatch
-  @Column({ name: 'unmatched_at', type: 'timestamp', nullable: true })
+  @Column({ name: 'unmatched_at', type: 'timestamptz', nullable: true })
   unmatchedAt: Date;
 
   @Column({ name: 'unmatched_by', nullable: true })
   unmatchedBy: string;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
 }
 

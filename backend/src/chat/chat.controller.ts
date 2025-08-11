@@ -100,6 +100,11 @@ export class ChatController {
     return this.chatService.updateWorkoutInviteStatus(req.user.id, id, 'canceled');
   }
 
+  @Put('workout-invite/:id/complete')
+  async completeInvite(@Request() req, @Param('id') id: string) {
+    return this.chatService.completeWorkoutInvite(req.user.id, id);
+  }
+
   @Post('share-location')
   async shareLocation(@Request() req, @Body() locationDto: LocationShareDto) {
     return this.chatService.shareLocation(req.user.id, locationDto);

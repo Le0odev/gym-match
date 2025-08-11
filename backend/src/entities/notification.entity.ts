@@ -57,10 +57,10 @@ export class Notification {
   })
   status: NotificationStatus;
 
-  @Column({ name: 'read_at', type: 'timestamp', nullable: true })
+  @Column({ name: 'read_at', type: 'timestamptz', nullable: true })
   readAt: Date;
 
-  @Column({ name: 'sent_at', type: 'timestamp', nullable: true })
+  @Column({ name: 'sent_at', type: 'timestamptz', nullable: true })
   sentAt: Date;
 
   @Column({ name: 'push_sent', default: false })
@@ -69,10 +69,10 @@ export class Notification {
   @Column({ name: 'push_token', nullable: true })
   pushToken: string;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
 }
 

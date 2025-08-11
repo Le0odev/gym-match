@@ -68,16 +68,16 @@ export class Message {
   })
   status: MessageStatus;
 
-  @Column({ name: 'read_at', type: 'timestamp', nullable: true })
+  @Column({ name: 'read_at', type: 'timestamptz', nullable: true })
   readAt: Date;
 
-  @Column({ name: 'delivered_at', type: 'timestamp', nullable: true })
+  @Column({ name: 'delivered_at', type: 'timestamptz', nullable: true })
   deliveredAt: Date;
 
   @Column({ name: 'is_edited', default: false })
   isEdited: boolean;
 
-  @Column({ name: 'edited_at', type: 'timestamp', nullable: true })
+  @Column({ name: 'edited_at', type: 'timestamptz', nullable: true })
   editedAt: Date;
 
   @Column({ name: 'reply_to_id', nullable: true })
@@ -86,10 +86,10 @@ export class Message {
   @ManyToOne(() => Message, { nullable: true })
   replyTo: Message;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
 }
 

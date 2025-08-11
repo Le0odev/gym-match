@@ -17,12 +17,15 @@ import { chatService } from '../services/chatService';
 import { getSocket } from '../services/api';
 import { eventBus } from '../services/eventBus';
 import { useAuth } from '../contexts/AuthContext';
+import { useFocusEffect } from '@react-navigation/native';
 
 const Matches = ({ navigation }) => {
   const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [unreadCounts, setUnreadCounts] = useState({});
+  const [newlyArrivedIds, setNewlyArrivedIds] = useState(new Set());
+  const [compatibilityMap, setCompatibilityMap] = useState({});
   const { user } = useAuth();
 
   // Helpers para lidar com diferentes formatos de resposta do backend
@@ -37,6 +40,14 @@ const Matches = ({ navigation }) => {
     loadMatches();
     loadUnreadCounts();
   }, []);
+
+  // Garante sincronização quando a aba ganha foco (ex.: após um novo match)
+  useFocusEffect(
+    React.useCallback(() => {
+      loadMatches();
+      loadUnreadCounts();
+    }, [])
+  );
 
   // Realtime: quando chegar mensagem nova, atualizar contador e preview
   useEffect(() => {
@@ -64,6 +75,16 @@ const Matches = ({ navigation }) => {
         }));
       };
       socket.on('message:new', onNewMessage);
+      const onMatchNew = () => {
+        loadMatches();
+        loadUnreadCounts();
+      };
+      const onMatchUpdate = () => {
+        loadMatches();
+        loadUnreadCounts();
+      };
+      socket.on('match:new', onMatchNew);
+      socket.on('match:update', onMatchUpdate);
       const offRead = eventBus.on('match:read', ({ matchId }) => {
         setUnreadCounts(prev => ({ ...prev, [matchId]: 0 }));
         setMatches(prev => prev.map(m => {
@@ -71,7 +92,12 @@ const Matches = ({ navigation }) => {
           return mid === matchId ? { ...m, unreadCount: 0 } : m;
         }));
       });
-      cleanup = () => socket.off('message:new', onNewMessage);
+      cleanup = () => {
+        socket.off('message:new', onNewMessage);
+        socket.off('match:new', onMatchNew);
+        socket.off('match:update', onMatchUpdate);
+        offRead && offRead();
+      };
     })();
     return () => { cleanup && cleanup(); };
   }, [user?.id]);
@@ -83,7 +109,57 @@ const Matches = ({ navigation }) => {
         includeMessages: true,
         limit: 50,
       });
-      setMatches(matchesData);
+      setMatches((prev) => {
+        const prevIds = new Set(prev.map((m) => getMatchId(m)).filter(Boolean));
+        const next = matchesData || [];
+        const newIds = next.map((m) => getMatchId(m)).filter((id) => id && !prevIds.has(id));
+        if (newIds.length > 0) {
+          setNewlyArrivedIds((old) => new Set([...Array.from(old), ...newIds]));
+          // auto-clear highlight após alguns segundos
+          setTimeout(() => {
+            setNewlyArrivedIds((old) => {
+              const copy = new Set(Array.from(old));
+              newIds.forEach((id) => copy.delete(id));
+              return copy;
+            });
+          }, 3500);
+        }
+        return next;
+      });
+
+      // Enriquecer compatibilidade para os primeiros itens se faltar
+      try {
+        const list = Array.isArray(matchesData) ? matchesData.slice(0, 10) : [];
+        const toFetch = [];
+        for (const m of list) {
+          const other = getOtherUser(m);
+          const existing = m?.compatibilityScore ?? m?.compatibility ?? compatibilityMap[other?.id];
+          if (!other?.id) continue;
+          if (typeof existing === 'number' && !Number.isNaN(existing)) continue;
+          toFetch.push(other.id);
+        }
+        if (toFetch.length > 0) {
+          const results = await Promise.all(toFetch.map(async (uid) => {
+            try {
+              const res = await userService.getCompatibilityScore(uid);
+              return { uid, score: Math.round(res?.score ?? 0) };
+            } catch {
+              return { uid, score: 0 };
+            }
+          }));
+          // Atualiza cache e lista
+          setCompatibilityMap((prevMap) => {
+            const updated = { ...prevMap };
+            results.forEach(({ uid, score }) => { updated[uid] = score; });
+            return updated;
+          });
+          setMatches((prevList) => prevList.map((m) => {
+            const other = getOtherUser(m);
+            const score = other?.id ? results.find(r => r.uid === other.id)?.score : undefined;
+            return typeof score === 'number' ? { ...m, compatibilityScore: score } : m;
+          }));
+        }
+      } catch {}
     } catch (error) {
       console.error('Error loading matches:', error);
       Alert.alert('Erro', 'Não foi possível carregar os matches');
@@ -129,26 +205,37 @@ const Matches = ({ navigation }) => {
   };
 
   const handleMatchPress = async (match) => {
+    // Calcular o id fora do try/catch para evitar ReferenceError quando der exception
+    const id = getMatchId(match);
+    const fallbackId = match?.id ?? match?.matchId ?? match?.match?.id ?? null;
+    const finalId = id ?? fallbackId;
+
     try {
       // Ao abrir a conversa, zera notificações/contador desse match no backend
-      const id = getMatchId(match);
-      if (id) {
-        await chatService.markAllMessagesAsRead(id);
+      if (finalId) {
+        await chatService.markAllMessagesAsRead(finalId);
         // Atualiza estado local imediatamente para refletir UI
-        setUnreadCounts((prev) => ({ ...prev, [id]: 0 }));
+        setUnreadCounts((prev) => ({ ...prev, [finalId]: 0 }));
         setMatches((prev) => prev.map((m) => {
-          const mid = getMatchId(m);
-          if (mid === id) {
+          const mid = getMatchId(m) ?? (m?.id ?? m?.matchId ?? m?.match?.id ?? null);
+          if (mid === finalId) {
             return { ...m, unreadCount: 0 };
           }
           return m;
         }));
       }
-    } catch {}
-    navigation.navigate('Chat', {
-      matchId: getMatchId(match),
-      matchData: match,
-    });
+    } catch (_) {
+      // tolerante a falhas; seguimos para a navegação condicional abaixo
+    }
+    // Só navegar se tivermos um id válido; caso contrário, prevenir erro UUID
+    if (finalId) {
+      navigation.navigate('Chat', {
+        matchId: finalId,
+        matchData: match,
+      });
+    } else {
+      Alert.alert('Erro', 'Não foi possível abrir o chat deste match.');
+    }
   };
 
   const formatLastMessageTime = (timestamp) => {
@@ -165,6 +252,40 @@ const Matches = ({ navigation }) => {
     } else {
       const diffInDays = Math.floor(diffInHours / 24);
       return `${diffInDays}d`;
+    }
+  };
+
+  // Preview robusto da última mensagem (texto ou fallback)
+  const getLastMessagePreview = (item) => {
+    try {
+      const lm = item?.lastMessage || item?.last_message || {};
+      // tentar todas as variantes comuns que o backend pode enviar
+      const candidates = [
+        lm?.content,
+        lm?.text,
+        item?.lastMessagePreview,
+        item?.last_message_preview,
+        item?.lastMessageText,
+        item?.last_message_text,
+        item?.initialMessage,
+        item?.initial_message,
+      ];
+      const content = candidates.find((v) => typeof v === 'string' && v.trim().length > 0);
+      if (content && typeof content === 'string' && content.trim().length > 0) {
+        return content.trim();
+      }
+      // convite de treino
+      const type = lm?.type || item?.lastMessageType || item?.last_message_type;
+      if (type === 'WORKOUT_INVITE' || type === 'workout_invite') {
+        return 'Convite para treino';
+      }
+      // Se existe lastMessageAt mas sem preview/conteúdo, ainda houve mensagem
+      if (item?.lastMessageAt || item?.last_message_at) {
+        return 'Nova mensagem';
+      }
+      return 'Vocês deram match!';
+    } catch {
+      return 'Vocês deram match!';
     }
   };
 
@@ -202,9 +323,22 @@ const Matches = ({ navigation }) => {
               <Text style={{ color: colors.white, fontFamily: 'Inter-Bold', fontSize: 10 }}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
             </View>
           )}
+          {/* Compatibilidade sob o avatar */}
+          <View style={{ alignItems: 'center', marginTop: 6 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Ionicons name="heart" size={12} color={colors.secondary} />
+              <Text style={{ marginLeft: 4, fontFamily: 'Inter-Medium', fontSize: 11, color: colors.secondary }}>
+                {(() => {
+                  const pct = typeof item.compatibilityScore === 'number' ? item.compatibilityScore : (typeof item.compatibility === 'number' ? item.compatibility : 0);
+                  const val = Math.round(pct);
+                  return `${val}%`;
+                })()}
+              </Text>
+            </View>
+          </View>
         </View>
 
-        <View style={getMatchInfoStyle()}>
+        <View style={[getMatchInfoStyle(), newlyArrivedIds.has(getMatchId(item)) ? { backgroundColor: colors.primary + '08', borderRadius: 10, padding: 6 } : null]}>
           <View style={getMatchHeaderStyle()}>
             <Text style={getMatchNameStyle()}>
               {otherUser?.name || 'Usuário'}
@@ -220,24 +354,12 @@ const Matches = ({ navigation }) => {
             {otherUser?.location || ''}
           </Text>
 
-          <View style={getMatchMessageContainerStyle()}>
-            <Text
-              style={getMatchMessageStyle(!hasUnread)}
-              numberOfLines={1}
-            >
-              {item.lastMessage?.content || 'Vocês deram match!'}
-            </Text>
-          </View>
-
           <View style={getMatchFooterStyle()}>
-            <View style={getCompatibilityContainerStyle()}>
-              <Ionicons
-                name="heart"
-                size={14}
-                color={colors.secondary}
-              />
-              <Text style={getCompatibilityTextStyle()}>
-                {item.compatibilityScore || 0}% compatível
+            {/* Preview da última mensagem alinhado com os chips */}
+            <View style={[getMatchMessageContainerStyle(), { flex: 1, marginTop: 0, marginBottom: 0, paddingRight: 8 }]}>
+              <Ionicons name="chatbubble-ellipses" size={14} color={colors.gray[400]} style={{ marginRight: 6 }} />
+              <Text style={getMatchMessageStyle(!hasUnread)} numberOfLines={1}>
+                {getLastMessagePreview(item)}
               </Text>
             </View>
 
@@ -395,7 +517,8 @@ const Matches = ({ navigation }) => {
   const getMatchMessageContainerStyle = () => ({
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 8,
+    marginTop: 12,
   });
 
   const getMatchMessageStyle = (isRead) => ({
@@ -429,6 +552,14 @@ const Matches = ({ navigation }) => {
     justifyContent: 'space-between',
     alignItems: 'center',
     marginTop: 2,
+  });
+
+  const getUnreadPillStyle = (visible) => ({
+    backgroundColor: visible ? colors.primary : colors.gray[200],
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+    marginLeft: 8,
   });
 
   const getCompatibilityContainerStyle = () => ({

@@ -29,6 +29,24 @@ export class ChatService {
     private gatewayService: GatewayService,
   ) {}
 
+  // Serialização como ISO UTC (com Z) para consistência com timestamptz
+  private toUtcIso(date?: Date | null): string | null {
+    if (!date) return null;
+    return new Date(date).toISOString();
+  }
+
+  private serializeMessageForClient(message: Message) {
+    if (!message) return message;
+    return {
+      ...message,
+      createdAt: this.toUtcIso(message.createdAt) as any,
+      updatedAt: this.toUtcIso(message.updatedAt) as any,
+      readAt: this.toUtcIso(message.readAt) as any,
+      deliveredAt: this.toUtcIso(message.deliveredAt) as any,
+      editedAt: this.toUtcIso(message.editedAt) as any,
+    };
+  }
+
   async sendMessage(userId: string, sendMessageDto: SendMessageDto): Promise<Message> {
     // Verificar se o match existe e o usuário tem permissão
     const match = await this.matchRepository.findOne({
@@ -76,8 +94,9 @@ export class ChatService {
       relations: ['sender', 'recipient', 'replyTo'],
     });
     if (messageWithRelations) {
-      this.gatewayService.emitToUser(recipientId, 'message:new', messageWithRelations);
-      this.gatewayService.emitToUser(userId, 'message:new', messageWithRelations);
+      const payload = this.serializeMessageForClient(messageWithRelations);
+      this.gatewayService.emitToUser(recipientId, 'message:new', payload);
+      this.gatewayService.emitToUser(userId, 'message:new', payload);
     }
 
     // Retornar mensagem com relações
@@ -85,7 +104,7 @@ export class ChatService {
       throw new NotFoundException('Message not found after creation');
     }
 
-    return messageWithRelations;
+    return this.serializeMessageForClient(messageWithRelations as Message) as any;
   }
 
   async getMatchMessages(userId: string, matchId: string, filters: MessageFiltersDto = {}) {
@@ -136,10 +155,11 @@ export class ChatService {
     // Marcar mensagens como entregues
     await this.markMessagesAsDelivered(matchId, userId);
 
+    const chrono = messages.reverse();
     return {
-      messages: messages.reverse(), // Reverter para ordem cronológica
-      total: messages.length,
-      hasMore: messages.length === (filters.limit || 50),
+      messages: chrono.map((m) => this.serializeMessageForClient(m)),
+      total: chrono.length,
+      hasMore: chrono.length === (filters.limit || 50),
     };
   }
 
@@ -160,7 +180,7 @@ export class ChatService {
       await this.updateUnreadCount(message.matchId, userId);
     }
 
-    return message;
+    return this.serializeMessageForClient(message as Message) as any;
   }
 
   async markAllMessagesAsRead(userId: string, matchId: string): Promise<void> {
@@ -260,7 +280,7 @@ export class ChatService {
     this.gatewayService.emitToUser(invite.inviteeId, 'invite:new', { invite: savedInvite, message });
     this.gatewayService.emitToUser(invite.inviterId, 'invite:new', { invite: savedInvite, message });
 
-    return message;
+    return this.serializeMessageForClient(message as Message) as any;
   }
 
   async updateWorkoutInviteStatus(userId: string, inviteId: string, status: 'accepted' | 'rejected' | 'canceled'): Promise<Message> {
@@ -291,7 +311,45 @@ export class ChatService {
     this.gatewayService.emitToUser(otherUserId, 'invite:update', { invite: saved, message });
     this.gatewayService.emitToUser(userId, 'invite:update', { invite: saved, message });
 
-    return message;
+    return this.serializeMessageForClient(message as Message) as any;
+  }
+
+  async completeWorkoutInvite(userId: string, inviteId: string) {
+    const invite = await this.inviteRepository.findOne({ where: { id: inviteId } });
+    if (!invite) throw new NotFoundException('Invite not found');
+    // Qualquer participante pode marcar como concluído (ou somente participantes)
+    const isParticipant = invite.inviterId === userId || invite.inviteeId === userId;
+    if (!isParticipant) throw new ForbiddenException('No access');
+
+    // Persistir status COMPLETED
+    invite.status = WorkoutInviteStatus.COMPLETED as any;
+    const saved = await this.inviteRepository.save(invite);
+
+    // Enviar mensagem informativa
+    const message = await this.sendMessage(userId, {
+      matchId: invite.matchId,
+      type: MessageType.WORKOUT_INVITE,
+      content: 'Treino concluído',
+      metadata: { inviteId: invite.id, status: 'completed' },
+    });
+
+    // Atualizar estatísticas dos dois participantes
+    await this.incrementUserCompletedWorkouts(invite.inviterId);
+    await this.incrementUserCompletedWorkouts(invite.inviteeId);
+
+    // Emitir atualização
+    const otherUserId = invite.inviterId === userId ? invite.inviteeId : invite.inviterId;
+    this.gatewayService.emitToUser(otherUserId, 'invite:update', { invite: saved, message });
+    this.gatewayService.emitToUser(userId, 'invite:update', { invite: saved, message });
+
+    return saved;
+  }
+
+  private async incrementUserCompletedWorkouts(userId: string) {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) return;
+    (user as any).completedWorkouts = ((user as any).completedWorkouts || 0) + 1;
+    await this.userRepository.save(user);
   }
 
   async getMatchInvites(userId: string, matchId: string) {
