@@ -189,7 +189,7 @@ const Dashboard = ({ navigation }) => {
       MESSAGE: 'chatbubble',
       LIKE: 'heart-outline',
       SUPER_LIKE: 'star',
-      WORKOUT_REMINDER: 'fitness',
+      WORKOUT_REMINDER: 'barbell',
       PROFILE_VIEW: 'eye',
       SYSTEM: 'information-circle',
     };
@@ -246,7 +246,7 @@ const Dashboard = ({ navigation }) => {
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 24,
-    paddingVertical: 16,
+    paddingVertical: 20,
     backgroundColor: colors.white,
     borderBottomWidth: 1,
     borderBottomColor: colors.gray[100],
@@ -258,25 +258,27 @@ const Dashboard = ({ navigation }) => {
 
   const getGreetingTextStyle = () => ({
     fontFamily: 'Inter-Regular',
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 13,
+    lineHeight: 18,
     color: colors.gray[600],
   });
 
   const getUserNameStyle = () => ({
     fontFamily: 'Poppins-Bold',
-    fontSize: 20,
-    lineHeight: 28,
+    fontSize: 22,
+    lineHeight: 30,
     color: colors.gray[900],
   });
 
   const getProfileButtonStyle = () => ({
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.white,
   });
 
   const getContentStyle = () => ({
@@ -288,41 +290,43 @@ const Dashboard = ({ navigation }) => {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    marginVertical: 24,
+    marginTop: 16,
+    marginBottom: 20,
   });
 
   const getStatCardStyle = () => ({
-    width: (screenWidth - 56) / 2, // Account for padding and gap
+    width: (screenWidth - 56) / 2,
     backgroundColor: colors.white,
-    borderRadius: 16,
-    padding: 20,
+    borderRadius: 18,
+    paddingVertical: 18,
+    paddingHorizontal: 18,
     marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.gray[100],
     shadowColor: colors.black,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 2,
   });
 
   const getStatValueStyle = () => ({
     fontFamily: 'Poppins-Bold',
-    fontSize: 24,
+    fontSize: 26,
     lineHeight: 32,
     color: colors.gray[900],
-    marginBottom: 4,
+    marginBottom: 6,
   });
 
   const getStatLabelStyle = () => ({
     fontFamily: 'Inter-Regular',
     fontSize: 12,
     lineHeight: 16,
-    color: colors.gray[600],
+    color: colors.gray[500],
   });
 
   const getQuickActionsStyle = () => ({
+    marginTop: 4,
     marginBottom: 24,
   });
 
@@ -331,7 +335,7 @@ const Dashboard = ({ navigation }) => {
     fontSize: 18,
     lineHeight: 24,
     color: colors.gray[900],
-    marginBottom: 16,
+    marginBottom: 14,
   });
 
   const getActionsRowStyle = () => ({
@@ -343,34 +347,34 @@ const Dashboard = ({ navigation }) => {
     flex: 1,
     backgroundColor: colors.white,
     borderRadius: 16,
-    padding: 20,
+    paddingVertical: 18,
+    paddingHorizontal: 14,
     alignItems: 'center',
     marginHorizontal: 4,
+    borderWidth: 1,
+    borderColor: colors.gray[100],
     shadowColor: colors.black,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 8,
-    elevation: 3,
+    elevation: 2,
   });
 
   const getActionIconStyle = () => ({
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.primary + '20',
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.primary + '18',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
   });
 
   const getActionTextStyle = () => ({
     fontFamily: 'Inter-Medium',
     fontSize: 12,
     lineHeight: 16,
-    color: colors.gray[700],
+    color: colors.gray[800],
     textAlign: 'center',
   });
 
@@ -382,24 +386,23 @@ const Dashboard = ({ navigation }) => {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.white,
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 16,
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.gray[100],
     shadowColor: colors.black,
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 4,
-    elevation: 2,
+    elevation: 1,
   });
 
   const getActivityIconStyle = (color) => ({
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: color + '20',
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: color + '18',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -410,7 +413,7 @@ const Dashboard = ({ navigation }) => {
   });
 
   const getActivityTitleStyle = () => ({
-    fontFamily: 'Inter-Medium',
+    fontFamily: 'Inter-SemiBold',
     fontSize: 14,
     lineHeight: 20,
     color: colors.gray[900],
@@ -421,7 +424,7 @@ const Dashboard = ({ navigation }) => {
     fontFamily: 'Inter-Regular',
     fontSize: 12,
     lineHeight: 16,
-    color: colors.gray[600],
+    color: colors.gray[700],
     marginBottom: 2,
   });
 
@@ -574,14 +577,13 @@ const Dashboard = ({ navigation }) => {
             <TouchableOpacity
               style={getActionButtonStyle()}
               onPress={() => {
-                // TODO: Navigate to workout tracker
-                console.log('Navigate to workout tracker');
+                navigation.navigate('Workout');
               }}
               activeOpacity={0.8}
             >
               <View style={getActionIconStyle()}>
                 <Ionicons
-                  name="fitness"
+                  name="barbell"
                   size={24}
                   color={colors.primary}
                 />
